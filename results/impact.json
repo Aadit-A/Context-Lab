@@ -1,0 +1,57 @@
+{
+  "date": "2026-10-24",
+  "machine": "Windows 11 Pro 10.0.26200, Python 3.14.6",
+  "token_provenance": "estimated - scripted local provider derives usage from request bytes (4 chars/token); not provider-billed",
+  "fixtures": [
+    {
+      "fixture": "A",
+      "harness": "bundled demo agent (examples/demo_agent.py)",
+      "model": "claude-sonnet-4-5",
+      "turns": 8,
+      "measured": {
+        "recorded_tokens_in": 36299,
+        "second_capture_recorded_tokens_in": 36299,
+        "determinism_difference_pct": 0.0
+      },
+      "projected": {
+        "scale": 1.057,
+        "policies": {
+          "baseline": {"tokens_in": 36299, "cost_usd": 0.109, "delta_pct": 0.0, "cache_pct": 0.0, "trajectory": "preserved"},
+          "cache-stable": {"tokens_in": 36299, "cost_usd": 0.0208, "delta_pct": -80.9, "cache_pct": 0.9, "trajectory": "preserved"},
+          "dedupe-reads": {"tokens_in": 6062, "cost_usd": 0.0183, "delta_pct": -83.2, "cache_pct": 0.0, "trajectory": "at risk"},
+          "schema-gating": {"tokens_in": 36299, "cost_usd": 0.109, "delta_pct": 0.0, "cache_pct": 0.0, "trajectory": "preserved"},
+          "truncate-200": {"tokens_in": 5649, "cost_usd": 0.0171, "delta_pct": -84.3, "cache_pct": 0.0, "trajectory": "at risk"}
+        }
+      },
+      "drift_pct": 0.4
+    },
+    {
+      "fixture": "B",
+      "harness": "Claude Code 2.1.301 (claude -p), scripted provider behind proxy",
+      "model": "claude-sonnet-4-5",
+      "turns": 2,
+      "measured": {
+        "recorded_tokens_in": 76062,
+        "schema_tokens_per_turn": 26855,
+        "schema_share_of_input_pct": 70.6,
+        "tools_defined": 31,
+        "note": "no tools were called (scripted provider replied plain text), so dedupe/truncate/schema-gating had nothing to act on"
+      },
+      "projected": {
+        "scale": 1.009,
+        "policies": {
+          "baseline": {"tokens_in": 76062, "cost_usd": 0.2282, "delta_pct": 0.0, "cache_pct": 0.0, "trajectory": "preserved"},
+          "cache-stable": {"tokens_in": 76060, "cost_usd": 0.0434, "delta_pct": -81.0, "cache_pct": 0.9, "trajectory": "preserved"},
+          "dedupe-reads": {"tokens_in": 76062, "cost_usd": 0.2282, "delta_pct": 0.0, "cache_pct": 0.0, "trajectory": "at risk"},
+          "schema-gating": {"tokens_in": 76062, "cost_usd": 0.2282, "delta_pct": 0.0, "cache_pct": 0.0, "trajectory": "preserved"},
+          "truncate-200": {"tokens_in": 76062, "cost_usd": 0.2282, "delta_pct": 0.0, "cache_pct": 0.0, "trajectory": "at risk"}
+        }
+      },
+      "drift_pct": 0.0
+    }
+  ],
+  "not_run": {
+    "phase_4b_live_replay": "no API key on this machine; audit budget $0",
+    "provider_billed_calibration": "drift against a real provider was NOT MEASURED"
+  }
+}

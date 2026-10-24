@@ -87,7 +87,6 @@ with no API key:
 ```bash
 python scripts/replay.py compare examples/demo.cassette.json
 ```
-```
 
 No harness installed? Use the bundled demo agent:
 
@@ -112,6 +111,27 @@ python scripts/install.py --target all --dest .   # AGENTS.md, .cursor, .clineru
 
 Or copy `SKILL.md` wherever your harness looks for skills. The shims tell an agent
 *when* to run the audit and *how* to report it.
+
+---
+
+## Impact (measured on this repo, not marketed)
+
+- Two captures of the same 8-turn session recorded **identical token totals and
+  policy projections** (36,299 tokens, 0.00% difference, 0.4% calibration drift).
+- A real Claude Code 2.1.301 one-question session paid **26,855 of 38,031 input
+  tokens per turn (71%) in tool schemas** before doing any work.
+- Offline projection on that session's wasteful twin: **dedupe-reads −83% input
+  tokens, truncate-200 −84%, cache-stable −81% cost** — labelled *projected*,
+  with the first two flagged as trajectory-changing and never re-tested live
+  here (no API key, $0 budget).
+
+Full method, the policy table, and what these numbers do **not** prove:
+[`IMPACT.md`](IMPACT.md). Reproduce in five minutes, no key needed:
+
+```bash
+python -m unittest discover -s tests
+python scripts/replay.py compare examples/demo.cassette.json
+```
 
 ---
 

@@ -17,3 +17,6 @@ examples/sample-report.html
 .env
 .DS_Store
 Thumbs.db
+
+# self-audit scratch - sessions, cassettes, overrides
+.audit/

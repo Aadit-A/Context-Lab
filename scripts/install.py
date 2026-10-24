@@ -93,8 +93,10 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     dest = Path(args.dest).expanduser().resolve()
+    # `all` stays inside --dest; installing to the user's home (~/.claude) is
+    # an explicit `--target claude` decision, never a side effect.
     targets = (
-        ["claude", "agents", "cursor", "cline", "gemini"]
+        ["claude-project", "agents", "cursor", "cline", "gemini"]
         if args.target == "all"
         else [args.target]
     )

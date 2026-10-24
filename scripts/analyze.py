@@ -442,6 +442,11 @@ def bar(pct: float, width: int = 18) -> str:
     return "#" * filled + "." * (width - filled)
 
 
+def ascii_safe(text: str) -> str:
+    """Windows consoles are not UTF-8 by default; keep terminal output ASCII."""
+    return text.encode("ascii", "backslashreplace").decode("ascii")
+
+
 def render_terminal(r: dict[str, Any], top: int = 5) -> str:
     b = r["buckets_usd"]
     p = r["buckets_pct"]
@@ -510,7 +515,7 @@ def render_terminal(r: dict[str, Any], top: int = 5) -> str:
     add("  Estimates are derived from this session's own usage, not from benchmarks.")
     add("  Re-measure after each change; keep what moves, revert what doesn't.")
     add("")
-    return "\n".join(lines)
+    return ascii_safe("\n".join(lines))
 
 
 def wrap(text: str, width: int) -> list[str]:

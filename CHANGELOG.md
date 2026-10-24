@@ -3,6 +3,40 @@
 All notable changes. Format loosely follows Keep a Changelog; versions follow
 semver once 1.0 ships.
 
+## [Unreleased]
+
+Findings of the 2026-10-24 self-audit (`SELF-AUDIT.md`). Session schema v2 is
+unchanged: every fix below corrects capture or rendering; no metric formula
+moved, so `SCHEMA_VERSION` stays 2. Old session files remain readable.
+
+### Fixed
+- `ctxprobe serve` no longer silently co-binds an occupied port on Windows
+  (SO_REUSEADDR allowed a second listener to steal traffic); it now exits with
+  the port number and a hint. An unwritable `--session-dir` also produces a
+  one-line error instead of a traceback.
+- Streamed responses are decoded with an incremental UTF-8 decoder. A multibyte
+  character split across read chunks was previously corrupted in the recorded
+  response blocks (and therefore in cassette objects).
+- OpenAI-shaped bodies: `role: "tool"` messages are recorded as `tool_result`
+  blocks, so their tokens land in the "command + file output" bucket and RDR can
+  see repeats (they were previously counted as plain text). A leading `system`
+  message is now part of the prefix hash, so PSI can observe OpenAI cache
+  breaks. `replay.py`'s raw-body parser classifies both the same way.
+- `analyze.py` terminal output is ASCII-only again; previews containing CJK or
+  emoji no longer crash a cp1252 console or a redirect.
+- `replay.py compare` now says so when `compact-at-*` rows did not compact
+  because no `--window` was given, instead of silently showing +0%.
+- `install.py --target all` stays inside `--dest` (it used to write to
+  `~/.claude/skills/` as a side effect). User-level install is unchanged and
+  explicit: `--target claude`.
+- HTML report footer states the real generator version instead of a hardcoded
+  `v0.1.0 / schema v1`.
+
+### Added
+- `tests/test_selfaudit.py` — 14 regression tests covering every fix above.
+- `IMPACT.md` and `results/impact.json` — measured numbers from the audit, with
+  provenance labels and explicit non-claims.
+
 ## [0.2.0] - 2026-10-24
 
 Replay. Projections become experiments.

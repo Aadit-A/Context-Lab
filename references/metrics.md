@@ -41,7 +41,8 @@ PSI = 1 - (turns where the normalised prefix hash changed) / (turns - 1)
 
 The prefix is the system prompt plus the tool definitions, normalised before
 hashing: ISO dates are masked to `<DATE>`, tool order is preserved (reordering is
-a real cache breaker, so it must not be masked).
+a real cache breaker, so it must not be masked). OpenAI-shaped requests carry
+the system prompt as a leading `system` message; it counts as part of the prefix.
 
 **Target:** > 90%. `analyze.py` reports the likely cause of each break — model
 change, tool-list change, or other.

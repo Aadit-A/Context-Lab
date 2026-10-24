@@ -18,6 +18,7 @@ No dependencies. No network egress except to the provider you configure.
 from __future__ import annotations
 
 import argparse
+import codecs
 import hashlib
 import json
 import os
@@ -90,6 +91,14 @@ def preview(text: str, n: int = 140) -> str:
 def est_tokens(text: str) -> int:
     """Rough fallback only. Provider-reported usage always wins."""
     return max(1, round(len(text) / 4))
+
+
+def prefix_hash_for(system_text: str, tools: Any) -> str:
+    """Hash of the cacheable prefix: system prompt plus tool definitions.
+
+    Volatile dates are masked so a date rollover is not reported as a break.
+    """
+    return sha(mask_dates(canon({"system": system_text, "tools": tools})), 12)
 
 
 def normalise_content(content: Any) -> list[dict[str, Any]]:
@@ -174,7 +183,36 @@ def summarise_messages(
         if not isinstance(msg, dict):
             continue
         role = msg.get("role", "?")
-        blocks = normalise_content(msg.get("content"))
+        if role == "system" and not system_text:
+            # OpenAI-style system message: belongs to the cacheable prefix.
+            # Stays in the message list too; system_chars is not touched, so
+            # estimated usage does not double-count it.
+            text = msg.get("content")
+            if isinstance(text, list):
+                text = " ".join(
+                    b.get("text", "") for b in text if isinstance(b, dict)
+                )
+            if not isinstance(text, str):
+                text = canon(text)
+            if text:
+                system_text = text
+
+        if role == "tool" or msg.get("tool_call_id"):
+            # OpenAI tool result: the payload sits on the message, not in a
+            # content block, so normalise_content cannot see it.
+            inner = msg.get("content", "")
+            if not isinstance(inner, str):
+                inner = canon(inner)
+            blocks = [
+                {
+                    "kind": "tool_result",
+                    "tool": None,
+                    "rid": msg.get("tool_call_id"),
+                    "text": inner,
+                }
+            ]
+        else:
+            blocks = normalise_content(msg.get("content"))
 
         for tc in msg.get("tool_calls") or []:
             fn = tc.get("function", {}) if isinstance(tc, dict) else {}
@@ -263,6 +301,7 @@ class UsageSink:
         self.stop_reason = ""
         self.blocks: list[dict[str, Any]] = []
         self._buf = ""
+        self._decode = codecs.getincrementaldecoder("utf-8")("replace")
         self._open: dict[int, dict[str, Any]] = {}
         self._partial: dict[int, str] = {}
 
@@ -319,7 +358,8 @@ class UsageSink:
 
     # -- streaming ------------------------------------------------------ #
     def feed_stream_bytes(self, chunk: bytes) -> None:
-        self._buf += chunk.decode("utf-8", "replace")
+        # Incremental decode: a multibyte character may straddle chunk reads.
+        self._buf += self._decode.decode(chunk)
         while "\n" in self._buf:
             line, self._buf = self._buf.split("\n", 1)
             line = line.strip()
@@ -584,7 +624,7 @@ class CtxProbeHandler(BaseHTTPRequestHandler):
             messages, system_chars, system_text = summarise_messages(payload, provider)
             tools = payload.get("tools") or []
             tools_json = mask_dates(canon(tools)) if tools else ""
-            prefix_hash = sha(mask_dates(canon({"system": system_text, "tools": tools})), 12)
+            prefix_hash = prefix_hash_for(system_text, tools)
 
             recorder = self.recorder
             assert recorder is not None
@@ -644,6 +684,12 @@ class CtxProbeHandler(BaseHTTPRequestHandler):
             sys.stderr.write(f"[ctxprobe] record error: {exc}\n")
 
 
+class ProbeServer(ThreadingHTTPServer):
+    # SO_REUSEADDR on Windows silently allows a second listener on an
+    # in-use port, which would leave a zombie proxy stealing traffic.
+    allow_reuse_address = sys.platform != "win32"
+
+
 def serve(args: argparse.Namespace) -> None:
     session_dir = Path(args.session_dir).expanduser()
     session_id = args.session or time.strftime("%Y%m%d-%H%M%S")
@@ -653,18 +699,32 @@ def serve(args: argparse.Namespace) -> None:
     if args.cassette:
         object_store = session_dir / f"{session_id}.cassette"
 
-    recorder = Recorder(
-        session_dir,
-        session_id,
-        args.record_raw,
-        object_store,
-        capture_responses=True,
-    )
+    try:
+        recorder = Recorder(
+            session_dir,
+            session_id,
+            args.record_raw,
+            object_store,
+            capture_responses=True,
+        )
+    except OSError as exc:
+        raise SystemExit(
+            f"cannot write sessions under {session_dir}: {exc}. "
+            "Pass --session-dir <writable directory>."
+        ) from None
+
     CtxProbeHandler.upstream_base = upstream
     CtxProbeHandler.recorder = recorder
     CtxProbeHandler.verbose = args.verbose
 
-    httpd = ThreadingHTTPServer((args.host, args.port), CtxProbeHandler)
+    try:
+        httpd = ProbeServer((args.host, args.port), CtxProbeHandler)
+    except OSError as exc:
+        raise SystemExit(
+            f"cannot listen on {args.host}:{args.port}: {exc}. "
+            "Another process may own that port; pick another with --port, or let "
+            "wrap.py choose one."
+        ) from None
     httpd.daemon_threads = True
 
     base = f"http://{args.host}:{args.port}"

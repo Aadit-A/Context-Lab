@@ -59,6 +59,18 @@ def body_to_blocks(body: dict[str, Any]) -> list[dict[str, Any]]:
     for msg in body.get("messages") or []:
         role = msg.get("role", "user")
         content = msg.get("content")
+        if role == "tool" or msg.get("tool_call_id"):
+            # OpenAI tool result: payload on the message, not in a block.
+            text = content if isinstance(content, str) else canon(content or "")
+            blocks.append(
+                {
+                    "role": role,
+                    "kind": "tool_result",
+                    "content": text,
+                    "rid": msg.get("tool_call_id"),
+                }
+            )
+            continue
         if isinstance(content, str):
             blocks.append({"role": role, "kind": "text", "content": content})
             continue
@@ -657,6 +669,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "compare":
         cas = load_cassette_file(Path(args.session))
         specs = [s.strip() for s in args.policies.split(",") if s.strip()]
+        if args.window is None and any(policies_mod.parse(s)[0] == "compact-at" for s in specs):
+            print(
+                "note: no --window given, so compact-at policies did not compact; "
+                "their rows show the uncompacted session. Pass --window <characters> "
+                "(context limit / 4) to model a real limit."
+            )
         result = compare(cas, specs, window=args.window)
         print(json.dumps(result, indent=2) if args.json else render_compare(result))
         return 0

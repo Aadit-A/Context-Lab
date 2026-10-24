@@ -81,6 +81,14 @@ python scripts/replay.py build ~/.ctxprobe/sessions/<id>.jsonl
 python scripts/replay.py compare ~/.ctxprobe/sessions/<id>.cassette.json
 ```
 
+No harness installed yet? The repo ships a real capture — this runs in one second
+with no API key:
+
+```bash
+python scripts/replay.py compare examples/demo.cassette.json
+```
+```
+
 No harness installed? Use the bundled demo agent:
 
 ```bash
@@ -248,6 +256,10 @@ A cheaper run that fails the task is not a win, and the tool says so.
 
 Verification reports are worth more than features right now. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
+
+To reproduce every number on this page on your own machine — and to audit the
+tool itself — run [SELF-AUDIT.md](SELF-AUDIT.md). It is written to be pasted into
+any agent.
 
 ```bash
 python -m unittest discover -s tests

@@ -2,11 +2,12 @@
 ### An open, harness-agnostic way to measure and cut agent token burn
 *Project spec v0.1 · 24 Oct 2026 · MIT · target: a 6–8 week v0.1*
 
-> **Implementation status (v0.1.0):** capture, attribution, the five metrics, the
-> HTML report, and the tokens-to-green loop are shipped and covered by tests.
-> The replay/counterfactual engine in §4.2 is designed but **not implemented** —
-> it is the headline roadmap item, and until it exists every savings figure is an
-> estimate rather than an experiment. See `CHANGELOG.md`.
+> **Implementation status (v0.2.0):** capture, attribution, the five metrics, the
+> HTML report, the tokens-to-green loop, and the replay/counterfactual engine
+> (§4.2) are shipped and covered by 60 tests. Replay projections are calibrated
+> against recorded usage; `replay.py run` additionally measures whether a policy
+> changes the model's decisions. Still open: summarising compaction (we elide),
+> log-based adapters, and the public leaderboard.
 
 ---
 

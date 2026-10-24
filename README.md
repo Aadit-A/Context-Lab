@@ -74,6 +74,11 @@ python scripts/analyze.py --latest
 
 # 3. get an HTML report
 python scripts/analyze.py --latest --html report.html
+
+# 4. ask what a different context policy would have cost, on the same session
+python scripts/wrap.py --cassette -- claude
+python scripts/replay.py build ~/.ctxprobe/sessions/<id>.jsonl
+python scripts/replay.py compare ~/.ctxprobe/sessions/<id>.cassette.json
 ```
 
 No harness installed? Use the bundled demo agent:
@@ -154,6 +159,53 @@ If your harness works, add a row. That is the most useful PR you can send.
 
 ---
 
+## Compare policies on one real session
+
+Record with `--cassette`, then ask what six different context policies would have cost
+on *that exact session*:
+
+```bash
+python scripts/wrap.py --cassette -- claude
+python scripts/replay.py build ~/.ctxprobe/sessions/<id>.jsonl
+python scripts/replay.py compare ~/.ctxprobe/sessions/<id>.cassette.json
+```
+
+```
+policy comparison  -  8 turns  -  claude-sonnet-4-5
+calibrated against 36,296 recorded input tokens (scale 1.057, drift 0.39%)
+--------------------------------------------------------------------------
+policy                tokens in     cost   delta  cache  trajectory
+--------------------------------------------------------------------------
+baseline                 36,296     0.11       -     0%  preserved
+cache-stable             36,296     0.02    -81%    90%  preserved
+dedupe-reads              6,058     0.02    -83%     0%  AT RISK
+schema-gating            36,296     0.11     +0%     0%  preserved
+truncate-200              5,646     0.02    -84%     0%  AT RISK
+--------------------------------------------------------------------------
+```
+
+The projection is **calibrated**: the untouched session reproduces the tokens the
+provider actually charged (drift 0.4% above), so every other row inherits that scale.
+
+`trajectory` is the policy's own claim. To test it, replay against a live model and see
+whether the agent still makes the same tool calls:
+
+```bash
+python scripts/replay.py run ~/.ctxprobe/sessions/<id>.raw \
+    --policy dedupe-reads --max-turns 10
+```
+
+```
+  decisions changed        2/9
+  divergence rate            22%
+    turn   4: ['Read'] -> ['Grep']
+```
+
+A policy that changes decisions is not disqualified — but it is now a hypothesis about
+quality, not a proven saving. That distinction is the whole point of the project.
+
+---
+
 ## Prove a change
 
 ```bash
@@ -184,10 +236,8 @@ A cheaper run that fails the task is not a win, and the tool says so.
 
 ## Roadmap
 
-- [ ] **Replay**: re-run a recorded session under a different context policy
-      against the same tool outputs, and compare tokens-to-green. This is the
-      experiment layer that turns estimates into evidence.
-- [ ] Log-based analysis for harnesses whose own logs include case accounting.
+- [x] **Replay**: re-run a recorded session under a different context policy
+      against the same tool outputs, and compare tokens-to-green.
 - [ ] Policy packs per harness (compaction thresholds, tool gating).
 - [ ] A public leaderboard: same model, same tasks, different context strategies.
 - [ ] GitHub Action that fails a PR when TTG regresses.

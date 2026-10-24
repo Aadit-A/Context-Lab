@@ -40,7 +40,10 @@ python scripts/install.py --target dir --dest /tmp/x --dry-run
 
 | Path | Owns |
 |---|---|
-| `scripts/ctxprobe.py` | capture, proxying, usage parsing |
+| `scripts/ctxprobe.py` | capture, proxying, usage and response parsing |
+| `scripts/cassette.py` | object store, tool-call pairing, request reconstruction |
+| `scripts/policies.py` | context transformations and their claims |
+| `scripts/replay.py` | calibration, projection, live divergence checking |
 | `scripts/analyze.py` | attribution, metrics, recommendations |
 | `scripts/report.py` | HTML rendering only |
 | `scripts/bench.py` | tokens-to-green loop |

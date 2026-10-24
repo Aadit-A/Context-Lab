@@ -17,6 +17,7 @@ Three tools, no dependencies, no network egress except to the provider:
 | `scripts/ctxprobe.py` | Records each request/response pair to a local session file |
 | `scripts/analyze.py` | Attributes spend to a cause, emits a ranked fix list |
 | `scripts/wrap.py` | Runs any agent command under the proxy, then audits it |
+| `scripts/replay.py` | Re-measures a recorded session under a different context policy |
 | `scripts/bench.py` | Records tokens-to-green for one task, so changes are comparable |
 
 ---
@@ -103,7 +104,32 @@ Report to the user, in this order:
 
 Never present an estimate as a result. The only result is a measured delta.
 
-### Step 3 — change exactly one thing
+### Step 3 — get the counterfactual before changing anything
+
+If the session was captured with `--cassette`, ask what each policy *would* have
+cost on that exact session. This is free and instant:
+
+```bash
+python scripts/replay.py build <session>.jsonl
+python scripts/replay.py compare <session>.cassette.json
+python scripts/replay.py compare <session>.cassette.json --window 200000
+```
+
+The baseline row must reproduce the recorded token count. `analyze` prints a
+`drift` figure; if it is above roughly 15%, the projection is not trustworthy on
+this session and you should say so rather than quote the other rows.
+
+`trajectory: AT RISK` means the policy changes what the model can see. To test
+that claim against a live model (costs money, needs a key):
+
+```bash
+python scripts/replay.py run <session>.raw --policy dedupe-reads --max-turns 10
+```
+
+Report the divergence rate, not just the saving. A policy that diverges is a
+hypothesis about quality, not a proven win.
+
+### Step 4 — change exactly one thing
 
 Take the top recommendation and apply it. Prefer changes that are reversible and
 outside the user's source code:
@@ -116,7 +142,7 @@ outside the user's source code:
 
 Do **not** edit the user's application code to satisfy the audit.
 
-### Step 4 — prove it
+### Step 5 — prove it
 
 Re-run the *same* task, not a similar one:
 
@@ -129,7 +155,7 @@ with the same `--name`. A change only counts as a win if `solved` stays the same
 and tokens or cost fall. **A cheaper run that fails the task is a regression** —
 say so plainly.
 
-### Step 5 — record the decision
+### Step 6 — record the decision
 
 Append one line to `DECISIONS.md` in the repo (create it if absent):
 
@@ -186,6 +212,13 @@ Twelve fixes ranked by measured impact, each with a verification step:
 
 Fall back to the manual checklist in `references/playbook.md` and be explicit
 that any number you give is a rule of thumb, not a measurement of their session.
-Known limitation: v0.1 cannot read a harness's own post-hoc logs, because those
-logs omit request bodies and cache accounting. That is the main reason the proxy
-exists.
+
+Known limitations, which you should state if they matter to the user:
+
+- Replay works from a recording. It cannot invent a session you did not capture.
+- `replay.py run` bills the user's API key; confirm before running more than a
+  few turns, and never run it without `--max-turns`.
+- Schema tokens are estimated at four characters per token; providers do not
+  break usage down by field.
+- Harness-native logs are not parsed, because they omit request bodies and cache
+  accounting. That is why the proxy exists.

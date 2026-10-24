@@ -57,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--home", default=str(Path.home() / ".ctxprobe" / "sessions"))
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--html", default="", help="write an HTML report here")
+    ap.add_argument("--cassette", action="store_true", help="record responses + objects for replay")
     ap.add_argument("--no-analyze", action="store_true")
     ap.add_argument("--no-run", action="store_true", help="start the proxy and wait")
     ap.add_argument("cmd", nargs=argparse.REMAINDER)
@@ -85,6 +86,8 @@ def main(argv: list[str] | None = None) -> int:
     ]
     if args.upstream:
         proxy_cmd += ["--upstream", args.upstream]
+    if args.cassette:
+        proxy_cmd += ["--cassette"]
 
     proxy = subprocess.Popen(proxy_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
@@ -126,10 +129,15 @@ def main(argv: list[str] | None = None) -> int:
         except subprocess.TimeoutExpired:
             proxy.kill()
 
-    if args.no_analyze:
-        return code
-
     session_file = Path(args.home).expanduser() / f"{session}.jsonl"
+
+    if args.no_analyze:
+        if args.cassette and session_file.exists():
+            print(
+                f"\ncassette objects: {Path(args.home).expanduser() / (session + '.cassette')}\n"
+                f"build a cassette: python scripts/replay.py build {session_file}"
+            )
+        return code
     if not session_file.exists():
         print(
             "\nno requests were recorded. Check that the harness honours the base-URL "
@@ -143,6 +151,11 @@ def main(argv: list[str] | None = None) -> int:
 
     extra = ["--html", args.html] if args.html else []
     analyze_mod.main([str(session_file), *extra])
+    if args.cassette:
+        print(
+            f"\nnext: python scripts/replay.py build {session_file} && "
+            f"python scripts/replay.py compare {session_file.with_suffix('.cassette.json')}"
+        )
     return code
 
 

@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/context-lab/context-lab/references/report.schema.json",
+  "title": "Context Lab analysis report",
+  "description": "Output of scripts/analyze.py --json. Version 1.",
+  "type": "object",
+  "required": ["session", "provider", "model", "turns", "cost_usd", "tokens", "buckets_usd", "metrics", "recommendations"],
+  "properties": {
+    "v": {"type": "integer", "const": 1},
+    "session": {"type": "string"},
+    "source": {"type": "string"},
+    "provider": {"type": "string", "enum": ["anthropic", "openai", "unknown"]},
+    "model": {"type": "string"},
+    "turns": {"type": "integer", "minimum": 1},
+    "duration_s": {"type": "number", "minimum": 0},
+    "cost_usd": {"type": "number", "minimum": 0},
+    "tokens": {
+      "type": "object",
+      "required": ["input", "output", "cache_read", "cache_creation", "schema", "tool_result", "redundant"],
+      "properties": {
+        "input": {"type": "integer", "minimum": 0},
+        "output": {"type": "integer", "minimum": 0},
+        "cache_read": {"type": "integer", "minimum": 0},
+        "cache_creation": {"type": "integer", "minimum": 0},
+        "schema": {"type": "integer", "minimum": 0},
+        "tool_result": {"type": "integer", "minimum": 0},
+        "redundant": {"type": "integer", "minimum": 0}
+      }
+    },
+    "buckets_usd": {
+      "type": "object",
+      "required": ["carried_history", "schemas", "tool_results", "new_text", "output"],
+      "additionalProperties": {"type": "number", "minimum": 0}
+    },
+    "buckets_pct": {
+      "type": "object",
+      "additionalProperties": {"type": "number", "minimum": 0, "maximum": 100}
+    },
+    "metrics": {
+      "type": "object",
+      "required": ["chr", "psi", "rdr", "st", "ct", "tokens_per_turn"],
+      "properties": {
+        "chr": {"type": "number", "minimum": 0, "maximum": 1, "description": "cache hit ratio"},
+        "psi": {"type": "number", "minimum": 0, "maximum": 1, "description": "prefix stability index"},
+        "rdr": {"type": "number", "minimum": 0, "maximum": 1, "description": "redundant data ratio"},
+        "st": {"type": "number", "minimum": 0, "maximum": 1, "description": "schema tax"},
+        "ct": {"type": "number", "minimum": 0, "maximum": 1, "description": "compaction tax"},
+        "tokens_per_turn": {"type": "integer", "minimum": 0}
+      }
+    },
+    "prefix_breaks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "turn": {"type": "integer", "minimum": 1},
+          "model_changed": {"type": "boolean"},
+          "tools_changed": {"type": "boolean"}
+        }
+      }
+    },
+    "compaction_turns": {"type": "array", "items": {"type": "integer"}},
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "detail", "est_saving_usd", "effort", "confidence"],
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "detail": {"type": "string"},
+          "est_saving_usd": {"type": "number", "minimum": 0},
+          "est_saving_pct": {"type": "number", "minimum": 0},
+          "effort": {"type": "string", "enum": ["low", "medium", "high"]},
+          "confidence": {"type": "string", "enum": ["high", "medium", "low"]}
+        }
+      }
+    },
+    "price_used": {
+      "type": "object",
+      "properties": {
+        "in": {"type": "number"},
+        "out": {"type": "number"},
+        "cache_read_mult": {"type": "number"},
+        "cache_write_mult": {"type": "number"}
+      }
+    }
+  }
+}

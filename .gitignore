@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# local recordings - never commit these
+.ctxprobe/
+*.raw/
+*.jsonl
+!examples/sample-session.jsonl
+
+# generated output
+bench.csv
+report.html
+examples/sample-report.html
+
+.venv/
+.env
+.DS_Store
+Thumbs.db

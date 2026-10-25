@@ -246,6 +246,28 @@ class InstallScopeTest(unittest.TestCase):
             self.assertNotIn(str(Path.home() / ".claude"), out.getvalue())
             self.assertIn(tmp, out.getvalue())
 
+    def test_skill_copy_can_target_a_directory_inside_the_source_tree(self):
+        import install  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory(dir=ROOT) as tmp:
+            out = Path(tmp) / "context-lab"
+            rc = install.main(["--target", "dir", "--dest", tmp])
+            self.assertEqual(rc, 0)
+            self.assertTrue((out / "SKILL.md").exists())
+            self.assertTrue((out / "scripts" / "live_policy.py").exists())
+            self.assertFalse((out / ".audit").exists())
+
+    def test_all_install_can_target_a_directory_inside_the_source_tree(self):
+        import install  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory(dir=ROOT) as tmp:
+            rc = install.main(["--target", "all", "--dest", tmp])
+            self.assertEqual(rc, 0)
+            self.assertTrue(
+                (Path(tmp) / ".claude" / "skills" / "context-lab" / "scripts" / "live_policy.py").exists()
+            )
+            self.assertTrue((Path(tmp) / "AGENTS.md").exists())
+
 
 # --------------------------------------------------------------------------- #
 # 6. compact-at without --window must say it did nothing

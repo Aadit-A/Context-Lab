@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent.parent  # skill root
@@ -30,11 +31,14 @@ or how to spend less per task, use the Context Lab skill.
 Quick procedure:
 1. `python scripts/wrap.py -- <agent command>` to record a real session.
 2. `python scripts/analyze.py --latest` for the cost breakdown and ranked fixes.
-3. Apply exactly one fix, re-run the *same* task, compare tokens-to-green with
-   `python scripts/bench.py --name <task> --test "<test cmd>" -- <agent command>`.
+3. Apply exactly one matching live policy, if request context is the cause:
+   `python scripts/wrap.py --policy <policy> -- <agent command>`.
+4. Re-run the *same* task and compare tokens-to-green with
+   `python scripts/bench.py --name <task> --test "<test cmd>" --policy <policy> -- <agent command>`.
 
 Rules: never send session data off the machine; never change the user's code
-without asking; report measured deltas, never estimated ones, as results.
+without asking; live policies are opt-in and responses are not rewritten; report
+measured deltas, never estimated ones, as results.
 Full details: SKILL.md in this skill folder.
 {end}
 """
@@ -71,14 +75,24 @@ def upsert(path: Path, text: str, dry: bool) -> str:
 
 
 def copy_skill(dest: Path, dry: bool) -> None:
+    if dest == HERE:
+        raise SystemExit("refusing to install the skill over its source directory")
     if dest.exists():
         shutil.rmtree(dest) if dest.is_dir() else dest.unlink()
     if not dry:
-        shutil.copytree(
-            HERE,
-            dest,
-            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".git", "bench.csv"),
-        )
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        # Stage beside the source first. Otherwise `--dest .` causes copytree
+        # to discover the destination it is creating and recurse into itself.
+        with tempfile.TemporaryDirectory(prefix="context-lab-install-", dir=str(HERE.parent)) as tmp:
+            staged = Path(tmp) / "context-lab"
+            shutil.copytree(
+                HERE,
+                staged,
+                ignore=shutil.ignore_patterns(
+                    "__pycache__", "*.pyc", ".git", ".audit", ".ctxprobe", "bench.csv"
+                ),
+            )
+            shutil.move(str(staged), str(dest))
 
 
 def main(argv: list[str] | None = None) -> int:

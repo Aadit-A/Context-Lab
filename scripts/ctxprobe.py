@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 SCHEMA_VERSION = 2
 
 HOP_BY_HOP = {
@@ -493,6 +493,7 @@ class CtxProbeHandler(BaseHTTPRequestHandler):
 
     upstream_base: str = ""
     recorder: Recorder | None = None
+    request_policy: Any = None
     verbose: bool = False
 
     def log_message(self, fmt: str, *args: Any) -> None:  # noqa: D102
@@ -533,10 +534,33 @@ class CtxProbeHandler(BaseHTTPRequestHandler):
                 payload = {}
 
         provider = guess_provider(self.path, payload)
+        forward_body = body
+        if self.request_policy is not None and body and payload:
+            try:
+                payload = self.request_policy.transform(payload, provider)
+                forward_body = json.dumps(
+                    payload, ensure_ascii=False, separators=(",", ":")
+                ).encode("utf-8")
+            except Exception as exc:
+                msg = json.dumps(
+                    {
+                        "type": "error",
+                        "error": {"type": "ctxprobe_policy", "message": str(exc)},
+                    }
+                ).encode()
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(msg)))
+                self.end_headers()
+                self.wfile.write(msg)
+                return
+
         upstream = (self.upstream_base or DEFAULT_UPSTREAM[provider]).rstrip("/")
         url = upstream + self.path
 
-        req = urllib.request.Request(url, data=body if body else None, method=self.command)
+        req = urllib.request.Request(
+            url, data=forward_body if forward_body else None, method=self.command
+        )
         for key, value in self.headers.items():
             if key.lower() in HOP_BY_HOP:
                 continue
@@ -607,8 +631,13 @@ class CtxProbeHandler(BaseHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
+        if self.request_policy is not None:
+            try:
+                self.request_policy.observe(sink.response(), provider)
+            except Exception as exc:
+                sys.stderr.write(f"[ctxprobe] policy observe error: {exc}\n")
         if self.recorder is not None and body:
-            self._record(payload, provider, sink, status, started, body, stream)
+            self._record(payload, provider, sink, status, started, forward_body, stream)
 
     def _record(
         self,
@@ -695,6 +724,14 @@ def serve(args: argparse.Namespace) -> None:
     session_id = args.session or time.strftime("%Y%m%d-%H%M%S")
 
     upstream = args.upstream or DEFAULT_UPSTREAM[args.provider]
+    policy = None
+    if args.policy:
+        from live_policy import make  # local import keeps the default path unchanged
+
+        try:
+            policy = make(args.policy)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from None
     object_store = None
     if args.cassette:
         object_store = session_dir / f"{session_id}.cassette"
@@ -715,6 +752,7 @@ def serve(args: argparse.Namespace) -> None:
 
     CtxProbeHandler.upstream_base = upstream
     CtxProbeHandler.recorder = recorder
+    CtxProbeHandler.request_policy = policy
     CtxProbeHandler.verbose = args.verbose
 
     try:
@@ -732,6 +770,8 @@ def serve(args: argparse.Namespace) -> None:
     print(f"  upstream : {upstream}")
     print(f"  session  : {session_id}")
     print(f"  log      : {recorder.path}")
+    if policy is not None:
+        print(f"  policy   : {policy.spec} (request context transformed; responses unchanged)")
     if object_store:
         print(f"  cassette : {object_store}")
     print()
@@ -772,6 +812,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     s.add_argument("--record-raw", action="store_true", help="store full request bodies")
     s.add_argument("--cassette", action="store_true", help="store content objects for replay")
+    s.add_argument(
+        "--policy",
+        default="",
+        help=(
+            "opt-in live request policy: cache-stable, dedupe-reads, "
+            "schema-gating[:Tool,...], or truncate:N"
+        ),
+    )
     s.add_argument("--verbose", action="store_true")
     s.set_defaults(func=serve)
 

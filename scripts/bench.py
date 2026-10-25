@@ -35,6 +35,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--test", required=True, help="command that proves the task is done")
     ap.add_argument("--provider", default="anthropic", choices=["anthropic", "openai"])
     ap.add_argument("--upstream", default="")
+    ap.add_argument(
+        "--policy",
+        default="",
+        help=(
+            "opt-in live request policy: cache-stable, dedupe-reads, "
+            "schema-gating[:Tool,...], or truncate:N"
+        ),
+    )
     ap.add_argument("--home", default=str(Path.home() / ".ctxprobe" / "sessions"))
     ap.add_argument("--csv", default="bench.csv")
     ap.add_argument("cmd", nargs=argparse.REMAINDER)
@@ -43,6 +51,14 @@ def main(argv: list[str] | None = None) -> int:
     cmd = args.cmd[1:] if args.cmd and args.cmd[0] == "--" else args.cmd
     if not cmd:
         ap.error("no agent command given. Use: bench.py --test '...' -- <command>")
+    if args.policy:
+        from live_policy import make
+
+        try:
+            make(args.policy)
+        except ValueError as exc:
+            print(f"invalid --policy: {exc}", file=sys.stderr)
+            return 2
 
     port = free_port()
     session = f"bench-{args.name}-{time.strftime('%Y%m%d-%H%M%S')}"
@@ -61,6 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     ]
     if args.upstream:
         proxy_cmd += ["--upstream", args.upstream]
+    if args.policy:
+        proxy_cmd += ["--policy", args.policy]
 
     base = f"http://127.0.0.1:{port}"
     started = time.time()

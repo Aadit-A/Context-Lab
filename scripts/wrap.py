@@ -58,6 +58,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--port", type=int, default=0)
     ap.add_argument("--html", default="", help="write an HTML report here")
     ap.add_argument("--cassette", action="store_true", help="record responses + objects for replay")
+    ap.add_argument(
+        "--policy",
+        default="",
+        help=(
+            "opt-in live request policy: cache-stable, dedupe-reads, "
+            "schema-gating[:Tool,...], or truncate:N"
+        ),
+    )
     ap.add_argument("--no-analyze", action="store_true")
     ap.add_argument("--no-run", action="store_true", help="start the proxy and wait")
     ap.add_argument("cmd", nargs=argparse.REMAINDER)
@@ -66,6 +74,14 @@ def main(argv: list[str] | None = None) -> int:
     cmd = args.cmd[1:] if args.cmd and args.cmd[0] == "--" else args.cmd
     if not cmd and not args.no_run:
         ap.error("no command given. Use: wrap.py -- <your agent command>")
+    if args.policy:
+        from live_policy import make
+
+        try:
+            make(args.policy)
+        except ValueError as exc:
+            print(f"invalid --policy: {exc}", file=sys.stderr)
+            return 2
 
     port = args.port or free_port()
     session = args.session or time.strftime("%Y%m%d-%H%M%S")
@@ -88,6 +104,8 @@ def main(argv: list[str] | None = None) -> int:
         proxy_cmd += ["--upstream", args.upstream]
     if args.cassette:
         proxy_cmd += ["--cassette"]
+    if args.policy:
+        proxy_cmd += ["--policy", args.policy]
 
     proxy = subprocess.Popen(proxy_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
@@ -116,7 +134,8 @@ def main(argv: list[str] | None = None) -> int:
                 pass
             return 0
 
-        print(f"[ctxprobe] session {session} -> {base}", file=sys.stderr)
+        policy_note = f" policy={args.policy}" if args.policy else ""
+        print(f"[ctxprobe] session {session} -> {base}{policy_note}", file=sys.stderr)
         try:
             code = subprocess.call(cmd, env=env)
         except FileNotFoundError:

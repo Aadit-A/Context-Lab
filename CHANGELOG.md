@@ -5,11 +5,27 @@ semver once 1.0 ships.
 
 ## [Unreleased]
 
-Findings of the 2026-10-24 self-audit (`SELF-AUDIT.md`). Session schema v2 is
-unchanged: every fix below corrects capture or rendering; no metric formula
-moved, so `SCHEMA_VERSION` stays 2. Old session files remain readable.
+No unreleased changes.
+
+## [0.3.0] - 2026-10-26
+
+Findings of the 2026-10-24 self-audit (`SELF-AUDIT.md`) plus the v0.3.0 live
+policy gateway. Session schema v2 is unchanged and no metric formula moved, so
+`SCHEMA_VERSION` stays 2. Old session files remain readable.
+
+### Added
+- An explicit live policy gateway: `wrap.py --policy` / `ctxprobe serve
+  --policy` can reduce repeated tool results, truncate oversized tool output,
+  stabilise volatile prefix text, or apply an explicit tool allowlist before a
+  request reaches the provider. The default recorder remains passthrough and
+  provider responses are never rewritten.
+- `bench.py --policy` so a live context change can be measured against the same
+  task instead of stopping at an offline projection.
 
 ### Fixed
+- `install.py` now stages a skill copy before moving it into place, so
+  `--target all --dest .` and other destinations inside the source tree do not
+  recurse into themselves or copy audit session scratch data.
 - `ctxprobe serve` no longer silently co-binds an occupied port on Windows
   (SO_REUSEADDR allowed a second listener to steal traffic); it now exits with
   the port number and a hint. An unwritable `--session-dir` also produces a
@@ -32,7 +48,7 @@ moved, so `SCHEMA_VERSION` stays 2. Old session files remain readable.
 - HTML report footer states the real generator version instead of a hardcoded
   `v0.1.0 / schema v1`.
 
-### Added
+### Audit artifacts
 - `tests/test_selfaudit.py` — 14 regression tests covering every fix above.
 - `IMPACT.md` and `results/impact.json` — measured numbers from the audit, with
   provenance labels and explicit non-claims.
@@ -91,5 +107,6 @@ First working release.
 ### Known limitations
 - Schema tokens are estimated at 4 characters per token.
 - Compaction detection is heuristic.
-- No replay yet — policy comparison is still an estimate, not an experiment.
+- Offline projections are calibrated estimates; live trajectory quality still
+  needs a real task and, for `replay.py run`, a provider key.
 - OmniRush wiring is untested against vendor documentation.

@@ -1,13 +1,14 @@
 # Context Lab
 ### An open, harness-agnostic way to measure and cut agent token burn
-*Project spec v0.1 · 24 Oct 2026 · MIT · target: a 6–8 week v0.1*
+*Project spec v0.3 · 26 Oct 2026 · MIT*
 
-> **Implementation status (v0.2.0):** capture, attribution, the five metrics, the
-> HTML report, the tokens-to-green loop, and the replay/counterfactual engine
-> (§4.2) are shipped and covered by 60 tests. Replay projections are calibrated
-> against recorded usage; `replay.py run` additionally measures whether a policy
-> changes the model's decisions. Still open: summarising compaction (we elide),
-> log-based adapters, and the public leaderboard.
+> **Implementation status (v0.3.0):** capture, attribution, the five metrics, the
+> HTML report, the tokens-to-green loop, replay/counterfactual comparison, and an
+> opt-in live request-policy gateway are shipped. Replay projections are
+> calibrated against recorded usage; `replay.py run` and `wrap.py --policy`
+> separate projected savings from an actual transformed run. Still open:
+> summarising compaction (we elide), log-based adapters, and the public
+> leaderboard.
 
 ---
 
@@ -15,12 +16,16 @@
 
 Coding agents burn tokens for structural reasons, not because anyone writes long prompts. The fixes are known but **unmeasured**: nobody can tell you whether compacting at 40% beats compacting at 85%, because no public tool can replay the *same session* under two context policies and compare.
 
-**Context Lab is two artifacts:**
+**Context Lab is four cooperating subsystems:**
 
-1. **`ctxprobe`** — a local proxy that sits between any harness (Claude Code, Codex CLI, Cline, Aider, OpenCode, DeepSeek-based harnesses) and any provider, attributing every token to a cause: schemas, re-reads, oversized tool output, reasoning, compaction tax, cache misses.
-2. **`ctx-replay`** — a cassette recorder/replayer that takes a captured session, replays the same tool outputs deterministically, and runs it under N different context policies to produce a **tokens-to-green** comparison.
+1. **Capture** — a local proxy that sits between a harness and a provider and records request, response, usage, and prefix metadata.
+2. **Attribution** — a terminal, JSON, and HTML analysis layer that explains where the tokens went.
+3. **Replay** — a cassette recorder/replayer that serves the same tool outputs under different context policies and produces a **tokens-to-green** comparison.
+4. **Live policy gateway** — an explicit `--policy` mode that applies one request-context reduction during a real wrapped run while leaving responses untouched.
 
-The contribution isn't the dashboard. It's the **metric definitions, the replay protocol, and a public dataset** — a Lighthouse score for agent context.
+The contribution is not a dashboard. It is the **metric definitions, replay
+protocol, privacy-preserving capture, and reproducible evidence** for agent
+context changes.
 
 ---
 
@@ -74,12 +79,13 @@ Seven buckets. The important thing is that six of them **compound**, because the
 
 ### 4.1 `ctxprobe` — capture and attribute
 
-A single binary (or `npx`) that runs a local HTTP proxy and a terminal UI.
+A small Python CLI that runs a local HTTP proxy and emits terminal, JSON, and
+HTML reports.
 
 ```bash
-$ ctxprobe audit -- claude          # launches the harness with the proxy injected
-$ ctxprobe audit -- codex --model gpt-5
-$ ctxprobe report ./sessions/2026-10-24T14-02.jsonl
+python scripts/wrap.py -- claude
+python scripts/analyze.py --latest --html report.html
+python scripts/replay.py compare examples/demo.cassette.json
 ```
 
 **How it hooks in** (no patching, no forks):
@@ -92,7 +98,10 @@ $ ctxprobe report ./sessions/2026-10-24T14-02.jsonl
 | Aider / Cline / OpenCode | provider base-URL setting |
 | Anything else | `HTTP_PROXY` fallback |
 
-**What it records per turn:** the full request body (messages, tool definitions, model, temperature), the response usage block (`input`, `output`, `cache_read`, `cache_creation`), wall-clock timing, and a hash of each message segment.
+**What it records per turn:** message metadata and hashes by default, the
+response usage block (`input`, `output`, `cache_read`, `cache_creation`),
+wall-clock timing, and content objects when cassette capture is enabled. Full
+request bodies are opt-in through `--record-raw`.
 
 **What it computes** — five attribution passes:
 
@@ -129,7 +138,7 @@ Every recommendation carries an **estimated dollar delta derived from the sessio
 
 ### 4.2 `ctx-replay` — the counterfactual
 
-This is the part nobody has built.
+This is the project's counterfactual layer.
 
 **Cassette format.** A recorded session becomes a deterministic fixture: for each turn, the request fingerprint, the tool calls the model made, and the tool *results* (byte-exact). Replay never executes tools — it serves recorded results. No repo mutation, no flaky network, no side effects.
 
@@ -140,20 +149,26 @@ session.cassette/
   workspace.diff     # final repo state, for scoring
 ```
 
-**Policy plugin API.** A policy is ~40 lines:
+**Policy plugin API.** An offline policy is small and deterministic:
 
-```ts
-export const policy: Policy = {
-  name: "truncate-tool-output-60",
-  transform(ctx) {
-    return ctx.mapToolResults(r =>
-      r.tokens > 60 ? headTail(r.content, 60) : r
-    );
-  }
-};
+```python
+class Policy:
+    name = "my-policy"
+
+    def transform_block(self, block, seen):
+        return block
+
+    def transform_tools(self, tools, used):
+        return tools
+
+    def transform_messages(self, messages, ctx):
+        return messages
 ```
 
-**Shipped policies for v0.1:** `baseline`, `truncate-tool-output-{40,60,200}`, `dedupe-reads` (elide re-reads of unchanged files), `schema-gating` (only the tools the task needs), `compact-at-{40,70,90}%`, `repo-map-first`.
+**Shipped policies:** `baseline`, `cache-stable`, `truncate-N`, `dedupe-reads`,
+`schema-gating`, `elide-N`, and `compact-at-N`. Live runs currently support
+`baseline`, `cache-stable`, `truncate:N`, `dedupe-reads`, and
+`schema-gating[:Tool,...]`.
 
 **Scoring.** Replay the policy, let the model run against recorded results, apply its edits to a scratch copy of the repo, run the task's tests. Report `solved?`, `tokens`, `cost`, `turns`, `CHR`.
 
@@ -168,7 +183,9 @@ schema-gating          3/3     590k      $6.55    155    71%    −28%
 truncate-60            2/3     498k      $5.61    149    70%    −38%  ← breaks the build
 ```
 
-That last row is the entire point. Truncation looks like the biggest win until you notice it costs you a solve. **No existing tool can show you that.**
+That last row is the important distinction: truncation can look like the biggest
+win until you measure whether it costs a solve. Context Lab keeps that question
+visible instead of treating a cheaper run as an automatic success.
 
 ---
 
@@ -210,19 +227,22 @@ Two rules make these honest: **always report CHR alongside TTG** (otherwise a ch
                                    policies → scores
 ```
 
-- **Language:** TypeScript, one process, zero native deps. `npx ctxprobe` has to be a one-liner or nobody tries it.
+- **Language:** Python 3.9+, standard library only. The repository is intentionally
+  zero-install.
 - **Storage:** append-only JSONL, one directory per session, `~/.ctxprobe/`.
-- **Privacy:** local only, no telemetry, redaction on by default (env values, secrets, absolute home paths). A `--share` flag produces a sanitised cassette for the public dataset.
+- **Privacy:** local only, no telemetry, redaction on by default (env values and
+  secrets). Sharing is manual; raw session data never leaves the machine.
 - **Cost model:** per-provider price table in a JSON file the community can PR. Publish the date of the price snapshot, always.
-- **Extensibility:** policies and providers are plugins; the report schema is versioned (`schema/v0.1.json`).
+- **Extensibility:** policies and providers are separated from the capture path;
+  the report schema is versioned in `references/report.schema.json`.
 
 ---
 
-## 7. Scope for v0.1 (6–8 weeks)
+## 7. Historical v0.1 scope
 
 | Week | Deliverable | Done when |
 |---|---|---|
-| 1 | Proxy + passthrough for Anthropic and OpenAI-compatible APIs | `ctxprobe audit -- claude` captures a real session end to end |
+| 1 | Proxy + passthrough for Anthropic and OpenAI-compatible APIs | `python scripts/wrap.py -- claude` captures a real session end to end |
 | 2 | Segment diff + content hashing + terminal report | The table in §4.1 prints real numbers on a real session |
 | 3 | Prefix/cache analysis + recommendation engine | Cache breaks are detected and named correctly on 5 hand-made cases |
 | 4 | Cassette recorder + deterministic replayer | A recorded session replays with byte-identical tool results |
@@ -230,7 +250,8 @@ Two rules make these honest: **always report CHR alongside TTG** (otherwise a ch
 | 6 | 3 reference tasks + `dedupe-reads` / `schema-gating` policies | The §4.2 table is reproducible on a clean machine |
 | 7–8 | Spec doc, dataset release, blog post, CI | A stranger can run it from the README in under 5 minutes |
 
-**Explicit non-goals for v0.1:** no hosted service, no team dashboards, no fine-tuning, no multi-agent orchestration, no GUI beyond the static HTML report.
+**Explicit non-goals:** no hosted service, no team dashboards, no fine-tuning, no
+multi-agent orchestration, and no GUI beyond the static HTML report.
 
 **Success looks like:** 300+ GitHub stars, 3 external policy PRs, and at least one "we changed our default compaction threshold because of this" issue.
 
@@ -251,7 +272,8 @@ The dataset is what makes this citable. Rules:
 
 ## 9. How this gets adopted
 
-- **The one-liner is the ad.** `npx ctxprobe audit -- claude` produces a shareable report. People post their own numbers; the tool spreads itself.
+- **The one-liner is the ad.** `python scripts/wrap.py -- claude` produces a
+  shareable report. People post their own numbers; the tool spreads itself.
 - **Lead with a claim, not a feature.** Publish: *"We replayed 200 real sessions under 6 context policies. Schema-gating saves 28% with no success loss; truncating tool output at 60 tokens silently fails 1 in 3 tasks."* That sentence is the paper, the README, and the HN post.
 - **Name the metrics.** If CHR/PSI/TTG get picked up by two other tools, you've won regardless of your repo's star count.
 - **Neutrality is the moat.** You're not selling a harness, a model, or a proxy. You're the measurement layer every side can cite.

@@ -21,6 +21,19 @@ verifiable: apply it, re-run the *same* task, compare with `bench.py`.
 The percentages are planning ranges from the mechanism, not benchmark results.
 Measure your own.
 
+Context Lab can apply the selected request-context fix during a real run instead
+of only estimating it offline. Use one policy at a time:
+
+```bash
+python scripts/wrap.py --policy truncate:200 -- <agent command>
+python scripts/wrap.py --policy dedupe-reads -- <agent command>
+python scripts/wrap.py --policy cache-stable -- <agent command>
+```
+
+These are opt-in interventions. The normal recorder remains passthrough, and
+the provider response is not rewritten. Measure the same task with
+`bench.py --policy` before keeping a change.
+
 ---
 
 ## 1. Filter command output

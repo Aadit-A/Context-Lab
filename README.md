@@ -1,289 +1,273 @@
 # Context Lab
 
-**Find out where your coding agent actually spends its tokens — and prove whether a fix worked.**
+**Measure where an AI coding agent spends tokens, apply a targeted context fix,
+and verify whether the same task got cheaper.**
 
-Coding agents burn tokens for structural reasons: the whole context is re-sent on
-every turn, tool schemas are charged every turn, and the same file gets read four
-times. The fixes are well known. What has been missing is a way to *measure* them
-on your own sessions, across any harness.
+Context Lab is a local, standard-library-only toolkit for Claude Code, Codex CLI,
+Cline, Roo, Aider, OpenCode, Cursor, Gemini CLI, OmniRush, local models, and
+other Anthropic- or OpenAI-compatible harnesses.
 
-Context Lab is a local proxy, an attribution engine, and a benchmark loop. It
-works with Claude Code, Codex CLI, Cline, Roo, Aider, OpenCode, Cursor, Gemini
-CLI, OmniRush, local models — anything that speaks the Anthropic or OpenAI HTTP
-API.
+It answers three questions:
 
-- **No dependencies.** Python standard library only.
-- **No network egress** except to the provider you already use.
-- **No fork, no patch.** A base-URL change is the entire integration.
+1. **Where did this session spend tokens?**
+2. **What would a different context policy have cost on this exact session?**
+3. **Can I apply one fix and measure the same task again?**
 
-```
-pip install nothing. It's three scripts.
-```
+## At a glance
 
----
+- **Local only:** no telemetry, hosted service, account, or data upload.
+- **No dependencies:** Python standard library only; Python 3.9+.
+- **Harness-agnostic:** redirect a provider base URL; do not fork or patch the harness.
+- **Evidence-first:** every recommendation is tied to the recorded session.
+- **Opt-in remediation:** apply `cache-stable`, `dedupe-reads`, `truncate:N`, or
+  `schema-gating` during a real wrapped run.
 
-## Why
+## What it does
 
-| What people believe | What the numbers usually show |
-|---|---|
-| "My prompt is too long" | The prompt is 0.3% of spend |
-| "Output tokens are the problem" | Output is 7% of tokens but 35% of the bill |
-| "Stripe-style caching just works" | A date in the system prompt resets it every turn |
-| "We should compact sooner" | True, but it is worth 6%, not 40% |
-| "MCP servers are cheap" | 9 servers can be 20% of every request |
+### Capture
 
-A typical 45-turn session:
+`ctxprobe.py` is a local HTTP recorder. It forwards requests to the provider,
+streams responses back to the harness, and records per-turn metadata:
 
-```
-CONTEXT AUDIT - 45 turns - $4.87 - claude-sonnet-4-5
---------------------------------------------------------------------------
-  carried history          $   4.11   84.4%  ###############...
-  tool schemas / MCP       $   0.32    6.7%  #.................
-  model output             $   0.32    6.7%  #.................
-  command + file output    $   0.09    1.9%  ..................
-  new prompts              $   0.02    0.3%  ..................
---------------------------------------------------------------------------
-  cache hit rate (CHR)        78%   target >75%    [ok]
-  prefix stability (PSI)      93%   target >90%    [ok]
-  redundant reads (RDR)       19%   target <10%    [warn]
-  schema tax (ST)              7%   target <10%    [ok]
-  compaction tax (CT)          1%   target <8%     [ok]
---------------------------------------------------------------------------
-TOP FIXES
-  1. Shape command output (largest single result: ~2016 tokens)  [-$0.79 / 16%]
-  2. 3 repeat(s) of unchanged content (19% of tool-result tokens) [-$0.41 / 8%]
-  3. Stop 3 prefix change(s) that reset the prompt cache          [-$0.20 / 4%]
-```
+- message hashes, sizes, roles, and 100-character previews;
+- tool definitions and prefix hashes;
+- provider usage: input, output, cache read, and cache write;
+- response blocks when cassette capture is enabled.
 
-Every estimate is derived from *that session's* token counts, and labelled with a
-confidence level. Change one thing, re-measure the same task, keep what moves.
+The default recorder does not rewrite request or response traffic. Full request
+bodies are stored only when `--record-raw` is explicitly enabled.
 
----
+### Attribute
+
+`analyze.py` separates spend into carried history, tool schemas, tool results,
+new text, and model output. It also reports:
+
+- **CHR** — cache hit ratio;
+- **PSI** — prefix stability index;
+- **RDR** — redundant data ratio;
+- **ST** — schema tax;
+- **CT** — compaction tax;
+- ranked fixes with session-derived estimated savings.
+
+### Compare
+
+`cassette.py` and `replay.py` turn a captured session into an offline fixture.
+`replay.py compare` applies policies to the same recorded messages and calibrates
+the projection against the provider usage in the capture.
+
+### Apply and verify
+
+`wrap.py --policy` is the explicit live intervention. It changes selected request
+context before the provider sees it, but still passes provider responses through.
+Use `bench.py --policy` to compare tokens-to-green on the same task.
 
 ## Quickstart
 
 ```bash
-git clone https://github.com/<you>/context-lab
-cd context-lab
+git clone https://github.com/Aadit-A/Context-Lab.git
+cd Context-Lab
 
-# 1. run your agent through the recorder
+# Record a real harness session.
 python scripts/wrap.py -- claude
 
-# 2. read the audit
+# Read the terminal audit, JSON, or HTML report.
 python scripts/analyze.py --latest
-
-# 3. get an HTML report
+python scripts/analyze.py --latest --json
 python scripts/analyze.py --latest --html report.html
+```
 
-# 4. ask what a different context policy would have cost, on the same session
+For a cassette and offline policy comparison:
+
+```bash
 python scripts/wrap.py --cassette -- claude
-python scripts/replay.py build ~/.ctxprobe/sessions/<id>.jsonl
-python scripts/replay.py compare ~/.ctxprobe/sessions/<id>.cassette.json
+python scripts/replay.py build ~/.ctxprobe/sessions/<session>.jsonl
+python scripts/replay.py compare ~/.ctxprobe/sessions/<session>.cassette.json
 ```
 
-No harness installed yet? The repo ships a real capture — this runs in one second
-with no API key:
+### Apply a fix
+
+Choose one policy that matches the audit. Do not stack policies until the first
+change has been measured.
+
+```bash
+# Remove volatile dates, times, and labelled run identifiers from the prefix.
+python scripts/wrap.py --policy cache-stable -- claude
+
+# Replace exact repeated tool results with a short marker.
+python scripts/wrap.py --policy dedupe-reads -- claude
+
+# Keep the head and tail of oversized tool results.
+python scripts/wrap.py --policy truncate:200 -- claude
+
+# Keep only explicitly named tools. Treat this as trajectory-risky.
+python scripts/wrap.py --policy schema-gating:Read,Edit,Bash -- claude
+```
+
+Prove the result on the same task:
+
+```bash
+python scripts/bench.py --name fix-billing \
+  --test "python -m unittest discover -s tests" \
+  --policy truncate:200 -- claude "fix the failing test"
+```
+
+`dedupe-reads`, `truncate:N`, and an explicit schema allowlist can change what a
+model sees. A cheaper run is not a win if the task no longer passes.
+
+## No-key demo
+
+The repository includes a fake localhost provider and a demo agent. No API key or
+external network access is required.
+
+Terminal 1:
+
+```bash
+python tests/fake_upstream.py 8899 realistic
+```
+
+Terminal 2:
+
+```bash
+python scripts/wrap.py \
+  --upstream http://127.0.0.1:8899 \
+  --policy truncate:200 \
+  -- python examples/demo_agent.py
+```
+
+For the committed offline capture:
 
 ```bash
 python scripts/replay.py compare examples/demo.cassette.json
 ```
 
-No harness installed? Use the bundled demo agent:
+## Measured impact
 
-```bash
-python -m tests.fake_upstream 8899 &
-python scripts/wrap.py --upstream http://127.0.0.1:8899 -- python examples/demo_agent.py
-```
+These figures are from this repository's bundled demo and a scripted localhost
+provider. The provider derives usage from serialized request bytes, so the token
+counts are measured provider responses from a synthetic fixture, not real-provider
+billing.
 
-Windows PowerShell:
+- **Measured:** `truncate:200` reduced input from **36,299 to 6,225 tokens
+  (-82.9%)** on the 8-turn demo capture.
+- **Measured:** `dedupe-reads` reduced input to **6,599 tokens (-81.8%)** and RDR
+  from **50.0% to 1.3%** on the same task.
+- **Measured / projected:** `cache-stable` changed PSI from **0% to 100%** in
+  the live fixture; the committed cassette projects **-80.9% cost** when a real
+  provider cache is available.
 
-```powershell
-python scripts\wrap.py -- claude
-python scripts\analyze.py --latest
-```
+No task-correctness claim is made for the trajectory-risky policies. Real-provider
+billing and live replay were not measured on this machine.
 
-### Install as an agent skill
-
-```bash
-python scripts/install.py --target claude     # ~/.claude/skills/context-lab
-python scripts/install.py --target all --dest .   # AGENTS.md, .cursor, .clinerules, GEMINI.md
-```
-
-Or copy `SKILL.md` wherever your harness looks for skills. The shims tell an agent
-*when* to run the audit and *how* to report it.
-
----
-
-## Impact (measured on this repo, not marketed)
-
-- Two captures of the same 8-turn session recorded **identical token totals and
-  policy projections** (36,299 tokens, 0.00% difference, 0.4% calibration drift).
-- A real Claude Code 2.1.301 one-question session paid **26,855 of 38,031 input
-  tokens per turn (71%) in tool schemas** before doing any work.
-- Offline projection on that session's wasteful twin: **dedupe-reads −83% input
-  tokens, truncate-200 −84%, cache-stable −81% cost** — labelled *projected*,
-  with the first two flagged as trajectory-changing and never re-tested live
-  here (no API key, $0 budget).
-
-Full method, the policy table, and what these numbers do **not** prove:
-[`IMPACT.md`](IMPACT.md). Reproduce in five minutes, no key needed:
-
-```bash
-python -m unittest discover -s tests
-python scripts/replay.py compare examples/demo.cassette.json
-```
-
----
+Full commands, tables, attribution, and non-claims: [`IMPACT.md`](IMPACT.md).
 
 ## How it works
 
+```text
+harness ──HTTP──▶ ctxprobe ──HTTPS──▶ provider
+                    │
+                    ├─ message diff       carried vs. new context
+                    ├─ content hashes      redundant reads
+                    ├─ prefix hashes       cache breaks and likely causes
+                    └─ usage parsing       input / output / cache accounting
+                           │
+                           ▼
+                    analyze ──▶ terminal · JSON · HTML
+                           │
+                           ▼
+                    cassette ─▶ replay ─▶ projection + divergence check
 ```
-  harness  ──HTTP──▶  ctxprobe  ──HTTPS──▶  provider
-  (any)                │
-                       ├─ message diff     what each tool call introduced
-                       ├─ content hashes   redundant reads
-                       ├─ prefix hashes    cache breaks, and their cause
-                       └─ usage parse      input / output / cache read+write
-                              │
-                              ▼
-                        analyze.py ──▶ terminal · JSON · HTML
-```
 
-The proxy forwards every request untouched and streams responses back in
-real time. It records **message hashes and 100-character previews**, not full
-bodies, unless you pass `--record-raw`.
+The normal recorder is passthrough. The live gateway is enabled only by an
+explicit `--policy` argument.
 
----
+## Metrics
 
-## The five metrics
+| Metric | Question | Healthy target |
+|---|---|---:|
+| **CHR** | How much input did the provider read from cache? | `> 75%` |
+| **PSI** | How often did the cacheable prefix stay stable? | `> 90%` |
+| **RDR** | How much tool-result content was repeated? | `< 10%` |
+| **ST** | How much input was tool-schema overhead? | `< 10%` |
+| **CT** | How much output went to compaction? | `< 8%` |
+| **TTG** | How many tokens until the task first passes? | task-specific |
 
-| Metric | Question it answers | Healthy |
-|---|---|---|
-| **CHR** cache hit ratio | How much of my input is being cached? | > 75% |
-| **PSI** prefix stability | How often do I reset that cache? | > 90% |
-| **RDR** redundant data | How much do I re-read unchanged bytes? | < 10% |
-| **ST** schema tax | How much am I paying for tools I don't call? | < 10% |
-| **CT** compaction tax | How much goes to summarising? | < 8% |
-
-Plus **TTG — tokens to green**, recorded per task by `bench.py`. Cost per *solve*,
-never cost per *run*.
-
-Definitions and the savings arithmetic: [`references/metrics.md`](references/metrics.md).
-
----
+Definitions and savings arithmetic live in
+[`references/metrics.md`](references/metrics.md).
 
 ## Harness support
 
-| Harness | Status | Mechanism |
+| Harness | Status | Integration |
 |---|---|---|
 | Claude Code | verified | `ANTHROPIC_BASE_URL` |
-| Codex CLI | verified | `OPENAI_BASE_URL` / `config.toml` |
-| Aider, OpenCode, Continue, Cline, Roo | supported | base-URL setting |
-| DeepSeek, Kimi, Qwen, OpenRouter, vLLM, Ollama | supported | `--upstream` |
-| OmniRush | **untested by us** | generic OpenAI/Anthropic path — [compatibility test](references/harnesses.md#omnirush) |
-| Gemini CLI | partial | only if the CLI exposes a base-URL flag |
+| Codex CLI | verified | `OPENAI_BASE_URL` or `config.toml` |
+| Aider | supported | `--openai-api-base` or env var |
+| Cline / Roo Code / Continue | supported | provider base-URL setting |
+| OpenCode | supported | `provider.<id>.options.baseURL` |
+| Cursor | version-dependent | OpenAI base-URL override |
+| Gemini CLI | partial | only when a base-URL option is available |
+| OmniRush | unverified | generic OpenAI/Anthropic path |
+| OpenAI-compatible providers | supported | `--upstream` or `OPENAI_BASE_URL` |
 
-If your harness works, add a row. That is the most useful PR you can send.
+Per-harness instructions and the compatibility test are in
+[`references/harnesses.md`](references/harnesses.md).
 
----
-
-## Compare policies on one real session
-
-Record with `--cassette`, then ask what six different context policies would have cost
-on *that exact session*:
-
-```bash
-python scripts/wrap.py --cassette -- claude
-python scripts/replay.py build ~/.ctxprobe/sessions/<id>.jsonl
-python scripts/replay.py compare ~/.ctxprobe/sessions/<id>.cassette.json
-```
-
-```
-policy comparison  -  8 turns  -  claude-sonnet-4-5
-calibrated against 36,296 recorded input tokens (scale 1.057, drift 0.39%)
---------------------------------------------------------------------------
-policy                tokens in     cost   delta  cache  trajectory
---------------------------------------------------------------------------
-baseline                 36,296     0.11       -     0%  preserved
-cache-stable             36,296     0.02    -81%    90%  preserved
-dedupe-reads              6,058     0.02    -83%     0%  AT RISK
-schema-gating            36,296     0.11     +0%     0%  preserved
-truncate-200              5,646     0.02    -84%     0%  AT RISK
---------------------------------------------------------------------------
-```
-
-The projection is **calibrated**: the untouched session reproduces the tokens the
-provider actually charged (drift 0.4% above), so every other row inherits that scale.
-
-`trajectory` is the policy's own claim. To test it, replay against a live model and see
-whether the agent still makes the same tool calls:
+## Install as an agent skill
 
 ```bash
-python scripts/replay.py run ~/.ctxprobe/sessions/<id>.raw \
-    --policy dedupe-reads --max-turns 10
+# User-level Claude skill.
+python scripts/install.py --target claude
+
+# Project-local skill plus instruction-file shims.
+python scripts/install.py --target all --dest .
 ```
 
-```
-  decisions changed        2/9
-  divergence rate            22%
-    turn   4: ['Read'] -> ['Grep']
-```
+The installed skill tells an agent when to measure, how to choose a policy, and
+how to report a measured before/after result. See [`SKILL.md`](SKILL.md).
 
-A policy that changes decisions is not disqualified — but it is now a hypothesis about
-quality, not a proven saving. That distinction is the whole point of the project.
+## Privacy and safety
 
----
+- Session files stay under `~/.ctxprobe/` unless `--home` is supplied.
+- No telemetry, hosted mode, account, or analytics.
+- Previews are limited to 100 characters and secrets are redacted.
+- `--record-raw` is opt-in and can contain sensitive request bodies.
+- Live policies are explicit; trajectory-risky policies must be verified with the
+  same task before adoption.
 
-## Prove a change
+## Repository layout
 
-```bash
-python scripts/bench.py --name fix-billing --test "pytest -q" -- claude "fix the failing test"
-```
+| Path | Purpose |
+|---|---|
+| `scripts/ctxprobe.py` | Local proxy, capture, usage parsing, response recording |
+| `scripts/live_policy.py` | Explicit live request-context reductions |
+| `scripts/analyze.py` | Attribution, metrics, recommendations |
+| `scripts/cassette.py` | Content-addressed cassette storage |
+| `scripts/policies.py` | Offline policy definitions |
+| `scripts/replay.py` | Calibrated comparison and live divergence checks |
+| `scripts/wrap.py` | Run a harness under the recorder |
+| `scripts/bench.py` | Tokens-to-green comparison |
+| `scripts/install.py` | Install the skill and harness shims |
+| `references/` | Metrics, harnesses, policies, prices, replay notes |
+| `tests/` | Standard-library regression and integration tests |
+| `examples/` | No-key demo agent and committed cassette |
 
-```
-task      fix-billing
-solved    yes
-turns     38
-tokens    612,449 in / 21,004 out
-cost      $3.12
-vs. last  -$0.94 (-23%), -7 turns
-```
-
-A cheaper run that fails the task is not a win, and the tool says so.
-
----
-
-## Privacy
-
-- Session files live in `~/.ctxprobe/sessions/` and never leave the machine.
-- Previews are truncated to 100 characters and API keys are redacted.
-- `--record-raw` (full request bodies) is opt-in and off by default.
-- No telemetry, no accounts, no hosted service. There is nothing to sign up for.
-
----
-
-## Roadmap
-
-- [x] **Replay**: re-run a recorded session under a different context policy
-      against the same tool outputs, and compare tokens-to-green.
-- [ ] Policy packs per harness (compaction thresholds, tool gating).
-- [ ] A public leaderboard: same model, same tasks, different context strategies.
-- [ ] GitHub Action that fails a PR when TTG regresses.
-
----
-
-## Contributing
-
-Verification reports are worth more than features right now. See
-[CONTRIBUTING.md](CONTRIBUTING.md).
-
-To reproduce every number on this page on your own machine — and to audit the
-tool itself — run [SELF-AUDIT.md](SELF-AUDIT.md). It is written to be pasted into
-any agent.
+## Development
 
 ```bash
 python -m unittest discover -s tests
+python scripts/analyze.py examples/sample-session.jsonl
+python scripts/replay.py compare examples/demo.cassette.json
+python scripts/install.py --target dir --dest .audit/install-check --dry-run
 ```
+
+The project intentionally has no third-party requirements. If `pytest` is not
+installed, use the standard-library `unittest` command above.
+
+More detail:
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — verification and pull requests;
+- [`SELF-AUDIT.md`](SELF-AUDIT.md) — full self-audit procedure;
+- [`SPEC.md`](SPEC.md) — design and metric rationale;
+- [`CHANGELOG.md`](CHANGELOG.md) — release history.
 
 ## License
 

@@ -62,9 +62,28 @@ Rules a policy must not break:
 - never drop the original task message;
 - be deterministic given the same input and a `reset()` state.
 
+## 3. Applying a policy to a live run
+
+Offline comparison is not the only path. An explicit live gateway can transform
+request context before the provider sees it:
+
+```bash
+python scripts/wrap.py --policy truncate:200 -- claude
+python scripts/wrap.py --policy dedupe-reads -- claude
+python scripts/wrap.py --policy cache-stable -- claude
+python scripts/wrap.py --policy schema-gating:Read,Edit,Bash -- claude
+```
+
+The default recorder remains byte-preserving. `--policy` is the opt-in exception:
+only the request body is transformed, upstream response bytes are still returned
+to the harness, and the transformed request is what the session records as the
+provider-billed input. Live support is limited to `baseline`, `cache-stable`,
+`dedupe-reads`, `truncate:N`, and `schema-gating[:Tool,...]`; use `compare` for
+`elide` and `compact-at` projections.
+
 ---
 
-## 3. Calibration
+## 4. Calibration
 
 A raw character count is a bad token estimate. So the projection is **anchored**:
 
@@ -82,7 +101,7 @@ absolute savings do not.
 
 ---
 
-## 4. Live replay and divergence
+## 5. Live replay and divergence
 
 `replay.py run` re-sends each transformed request to a real provider and compares
 the tool calls it gets back with the ones recorded in the next turn of the
@@ -103,7 +122,7 @@ requires `--yes`.
 
 ---
 
-## 5. Adding a policy
+## 6. Adding a policy
 
 1. Subclass `Policy` in `scripts/policies.py`, set `name` and the two claims.
 2. Register it in `REGISTRY`.

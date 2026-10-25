@@ -2,134 +2,174 @@
 
 ## What was measured
 
-- **Machine/OS:** Windows 11 Pro (10.0.26200), Git Bash shell
-- **Python:** 3.14.6
-- **Date:** 2026-10-24
-- **Fixture A — 8 turns, `claude-sonnet-4-5`:** the bundled demo agent
-  (`examples/demo_agent.py`, which deliberately contains a volatile system
-  prompt, two uncalled tools, one large test output, and one repeated read)
-  against `tests/fake_upstream.py` in `realistic` mode on localhost.
-- **Fixture B — 2 turns, `claude-sonnet-4-5`:** a real harness, Claude Code
-  2.1.301 (`claude -p`), pointed at the same scripted local provider via
-  `--settings`, solving "fix the failing test" in a scratch repo.
-- **Token-count provenance for both fixtures:** the scripted provider derives
-  usage from request bytes (4 chars/token). Token totals are therefore
-  **estimated**, not provider-billed. Dollar figures use the dated price table
-  in `references/prices.json` and are indicative only.
-- Phase 4b (live replay against a real provider) was **not run**: no API key on
-  this machine and the audit budget is $0.
+- **Machine/OS:** `Windows-11-10.0.26200-SP0`, measured with
+  `python -c "import datetime,platform; print(platform.platform()); print(platform.python_version()); print(datetime.date.today().isoformat())"`.
+- **Python:** 3.14.6, measured by `python --version`.
+- **Date:** October 26, 2026.
+- **Regression suite:** 83 tests passed with `python -m unittest discover -s tests`.
+- **Fixture A:** the bundled `examples/demo_agent.py`, an 8-turn
+  `claude-sonnet-4-5`-shaped session against `tests/fake_upstream.py` in
+  `realistic` mode on localhost. It deliberately repeats a file result, sends
+  a large test result, and changes a volatile prefix value.
+- **Interventions:** the same demo task was run five times: baseline,
+  `cache-stable`, `schema-gating:Read`, `dedupe-reads`, and `truncate:200`.
+  Every run completed the demo process with exit code 0 and printed its normal
+  completion line. No task test was executed, so this is not a correctness
+  result.
+- **Token provenance:** the local scripted provider reported usage, but it
+  derives `input_tokens` from serialized request bytes at roughly 4 characters
+  per token. Token counts are therefore **measured provider responses from a
+  synthetic provider**, not real-provider billing. Dollar figures use the
+  dated local price table and are indicative.
+- **Live replay against a real provider:** **NOT MEASURED**. No API key was
+  used and the audit budget was $0.
 
 ## Headline
 
-- Two independent captures of the same 8-turn session recorded **identical
-  input token totals (36,299) and identical policy projections** — 0.00%
-  difference between runs, calibration drift 0.4% *(estimated tokens,
-  projected deltas)*.
-- On a real Claude Code 2.1.301 one-question session, **26,855 of 38,031 input
-  tokens per turn (71%) were tool-schema tokens**, before the agent did any
-  work *(estimated, 4 chars/token)*.
-- Offline policy projection on Fixture A: **dedupe-reads −83% input tokens,
-  truncate-200 −84%, cache-stable −81% cost** on the same session
-  *(projected; the first two are labelled trajectory AT RISK)*.
+- **Measured (synthetic provider):** `truncate:200` reduced input from **36,299
+  to 6,225 tokens (-82.9%)** and indicative cost from **$0.1090 to $0.0188
+  (-82.8%)** on this 8-turn demo capture. The policy is marked trajectory-risky;
+  the run did not prove task correctness.
+- **Measured (synthetic provider):** `dedupe-reads` reduced input from **36,299
+  to 6,599 tokens (-81.8%)** and reduced RDR from **50.0% to 1.3%** on the
+  same demo task. It is also trajectory-risky because old tool results are
+  replaced with a marker.
+- **Measured / projected:** `cache-stable` changed PSI from **0% to 100%** in
+  the live capture. The local provider reported no cache reads, so its real
+  cache-dollar benefit was **NOT MEASURED**; the committed cassette projects
+  **-80.9% cost** when a 90% cache hit is available.
 
 ## Method
 
+The following commands produced the numbers above. The fake provider never
+contacts the network; the five wrapped runs used only localhost.
+
 ```bash
-# baseline
+python --version
+python -c "import datetime,platform; print(platform.platform()); print(platform.python_version()); print(datetime.date.today().isoformat())"
 python -m unittest discover -s tests
 python scripts/analyze.py examples/sample-session.jsonl
-python scripts/replay.py compare examples/demo.cassette.json
+python scripts/replay.py compare examples/demo.cassette.json --json
+```
 
-# fixture A - determinism (fake upstream on 8899, realistic mode)
-python tests/fake_upstream.py 8899 realistic &
-python scripts/wrap.py --cassette --upstream http://127.0.0.1:8899 \
-    --session audit-a  --home ./.audit -- python examples/demo_agent.py
-python scripts/wrap.py --cassette --upstream http://127.0.0.1:8899 \
-    --session audit-a2 --home ./.audit -- python examples/demo_agent.py
-python scripts/replay.py build .audit/audit-a.jsonl
-python scripts/replay.py build .audit/audit-a2.jsonl
-python scripts/replay.py compare .audit/audit-a.cassette.json  --window 3000 --json
-python scripts/replay.py compare .audit/audit-a2.cassette.json --window 3000 --json
+In a second terminal, start the no-key provider:
 
-# fixture B - real harness at $0 (dummy key; scripted provider behind the proxy)
-printf '{"env": {"ANTHROPIC_BASE_URL": "http://127.0.0.1:18888", \
-"ANTHROPIC_API_KEY": "dummy-local", "ANTHROPIC_AUTH_TOKEN": ""}}' > override.json
+```bash
+python tests/fake_upstream.py 8899 realistic
+```
+
+Then run the same demo once per policy. The session directory is scratch data
+and is ignored by git:
+
+```bash
 python scripts/wrap.py --cassette --upstream http://127.0.0.1:8899 \
-    --session audit-b --home ./.audit --port 18888 -- \
-    claude --settings <abs path>/override.json --model claude-sonnet-4-5 \
-    -p "run the test in test_calc.py and fix calc.py so it passes" \
-    --dangerously-skip-permissions
-python scripts/replay.py build .audit/audit-b.jsonl
-python scripts/replay.py compare .audit/audit-b.cassette.json --json
+  --session impact-baseline --home .audit/impact-20261026 --no-analyze -- \
+  python examples/demo_agent.py
+python scripts/wrap.py --cassette --upstream http://127.0.0.1:8899 \
+  --session impact-cache --home .audit/impact-20261026 --no-analyze \
+  --policy cache-stable -- python examples/demo_agent.py
+python scripts/wrap.py --cassette --upstream http://127.0.0.1:8899 \
+  --session impact-schema --home .audit/impact-20261026 --no-analyze \
+  --policy schema-gating:Read -- python examples/demo_agent.py
+python scripts/wrap.py --cassette --upstream http://127.0.0.1:8899 \
+  --session impact-dedupe --home .audit/impact-20261026 --no-analyze \
+  --policy dedupe-reads -- python examples/demo_agent.py
+python scripts/wrap.py --cassette --upstream http://127.0.0.1:8899 \
+  --session impact-truncate --home .audit/impact-20261026 --no-analyze \
+  --policy truncate:200 -- python examples/demo_agent.py
+```
+
+The live table was generated from those JSONL files with:
+
+```bash
+python -c "import json,sys; from pathlib import Path; sys.path.insert(0,'scripts'); import analyze; root=Path('.audit/impact-20261026'); out=[]; names=['baseline','cache','schema','dedupe','truncate'];
+for name in names:
+ p=root/f'impact-{name}.jsonl'; r=analyze.analyse(analyze.load_session(p), analyze.DEFAULT_PRICES); out.append({'session':name,'turns':r['turns'],'input_tokens':r['tokens']['input'],'output_tokens':r['tokens']['output'],'cost_usd':r['cost_usd'],'chr':r['metrics']['chr'],'psi':r['metrics']['psi'],'rdr':r['metrics']['rdr'],'st':r['metrics']['st'],'prefix_breaks':len(r['prefix_breaks'])});
+print(json.dumps(out))"
 ```
 
 ## Results
 
-Fixture A — 8 turns, drift 0.4%, scale 1.057, two captures agreeing exactly:
+### Live intervention table — measured on the synthetic provider
 
-| Policy | Tokens in | Δ vs baseline | Cost | Δ cost | Cache % | Trajectory |
-|---|---:|---:|---:|---:|---:|---|
-| baseline | 36,299 | — | $0.109 | — | 0% | preserved |
-| cache-stable | 36,299 | ±0% | $0.021 | −81% | 90% | preserved |
-| dedupe-reads | 6,062 | −83% | $0.018 | −83% | 0% | at risk |
-| schema-gating | 36,299 | ±0% | $0.109 | ±0% | 0% | preserved |
-| truncate-200 | 5,649 | −84% | $0.017 | −84% | 0% | at risk |
+The token and cost columns are measured from each provider response. The
+percentages are relative to the baseline row. `trajectory` is a safety label,
+not a success measurement.
 
-Fixture B — 2 turns, drift 0.0%, scale 1.009. The scripted provider answered
-plain text, so Claude Code called no tools: dedupe/truncate/schema-gating had
-nothing to act on (+0%), which the tool reports honestly rather than
-inventing a saving. cache-stable −81% cost *(all projected)*.
+| Policy | Turns | Input tokens | Delta | Indicative cost | Delta | PSI | RDR | ST | Trajectory |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| baseline | 8 | 36,299 | — | $0.1090 | — | 0% | 50.0% | 2.5% | not tested |
+| cache-stable | 8 | 36,093 | -0.6% | $0.1084 | -0.6% | 100% | 50.0% | 2.5% | prefix-only |
+| schema-gating:Read | 8 | 35,370 | -2.6% | $0.1062 | -2.6% | 0% | 50.0% | 0.5% | at risk |
+| dedupe-reads | 8 | 6,599 | -81.8% | $0.0199 | -81.7% | 0% | 1.3% | 13.8% | at risk |
+| truncate:200 | 8 | 6,225 | -82.9% | $0.0188 | -82.8% | 0% | 50.0% | 14.6% | at risk |
+
+### Offline calibrated projection — projected, not re-sent to a live model
+
+Command: `python scripts/replay.py compare examples/demo.cassette.json --json`.
+The baseline reproduced **36,296 recorded input tokens** with **0.39% drift**
+and a calibration scale of **1.057**. The other rows inherit that scale.
+
+| Policy | Projected input tokens | Projected cost | Delta cost | Cache | Trajectory claim |
+|---|---:|---:|---:|---:|---|
+| baseline | 36,296 | $0.1090 | — | 0% | preserved |
+| cache-stable | 36,296 | $0.0208 | -80.9% | 90% | preserved |
+| dedupe-reads | 6,058 | $0.0183 | -83.2% | 0% | at risk |
+| schema-gating | 36,296 | $0.1090 | 0.0% | 0% | preserved |
+| truncate-200 | 5,646 | $0.0171 | -84.4% | 0% | at risk |
 
 ## Attribution
 
-Largest session measured: Fixture B (real Claude Code request shapes).
+The largest measured session was the baseline row in Fixture A:
 
-- tool schemas / MCP: **70.6%** of spend
-- carried history: 15.2%
-- new prompts: 14.2%
-- command + file output: 0.0%
-- model output: 0.0%
-- CHR 0% (scripted provider reports no cache), PSI 100%, RDR 0%, ST 71%, CT 0%
+- carried history: **75.8%** of indicative spend;
+- command and file results: **21.2%**;
+- tool schemas: **2.5%** *(schema tokens are estimated at 4 characters/token)*;
+- new prompts: **0.3%**;
+- model output: **0.1%**.
 
-The biggest single cause, in one sentence: **Claude Code ships 31 tool
-definitions (~26,855 estimated tokens) on every request, so a one-question
-session pays a 71% schema tax before any work happens.**
-
-For Fixture A (the deliberately wasteful demo agent): carried history 75.8%,
-tool results 21.2%, schema 2.5%, with PSI 0% (volatile system prompt) and RDR
-50% (repeated read) — each planted problem was detected and named.
+Its metrics were CHR **0%**, PSI **0%**, RDR **50.0%**, ST **2.5%**, and CT
+**0%**. The biggest single cause was **repeated context: the demo carried a
+2,853-token test result and a 998-token file result into later turns**. The
+live policies fix two different causes: `truncate:200` cuts the oversized
+result, while `dedupe-reads` replaces exact repeats.
 
 ## What this does not prove
 
-- **Task success.** No policy was replayed against a live model (Phase 4b
-  needs an API key and spends money), so "trajectory: preserved / AT RISK"
-  remains each policy's own claim, not an observation. A −83% token saving
-  that changes the agent's decisions is a hypothesis, not a win.
-- **Generality.** Two fixtures on one machine: a synthetic 8-turn agent and a
-  2-turn scripted exchange with a real harness. Nothing here is a claim about
-  "typical" sessions, other harnesses, or other models.
-- **Provider-billed tokens.** Both fixtures used a scripted local provider
-  that derives usage from request bytes; real-provider calibration drift was
-  NOT MEASURED. The committed `examples/demo.cassette.json` reproduces on this
-  machine to within 3 tokens (36,296 vs 36,299 recorded).
-- **Dollar figures.** Prices come from a dated table (`references/prices.json`)
-  and flat-rate subscriptions do not bill per token at all.
+- **Task success.** The demo process exited successfully, but it is not a real
+  coding task and no test suite was scored. `dedupe-reads`, `truncate:200`, and
+  an explicit schema allowlist can change what the model sees. No policy is
+  proven correct by a token reduction alone.
+- **Generality.** These are five runs of one synthetic 8-turn session on one
+  machine. They are not a claim about typical Claude Code, Codex, Cline,
+  OpenCode, or other harness sessions.
+- **Provider billing or cache economics.** The local provider derives usage from
+  request bytes and reports zero cache reads. Real-provider billing, cache TTL,
+  and cache pricing were **NOT MEASURED**.
+- **All policy types live.** `elide` and `compact-at` remain offline projections;
+  they need a full conversation policy and can break tool-call structure.
+- **No universal automatic fix.** The installed skill can apply one explicit
+  request policy and measure it. It cannot safely choose an MCP allowlist,
+  compaction threshold, or provider model for an arbitrary harness without
+  user context.
 
 ## Reproduce
 
-Five minutes, no API key, no dependencies:
+No API key and no third-party packages are required:
 
 ```bash
-cd "C:\PROJECTS\Context Lab"          # any path with a space in it works
-python -m unittest discover -s tests  # 74 tests
-python tests/fake_upstream.py 8899 realistic &   # or run it in a second shell
-python scripts/wrap.py --cassette --upstream http://127.0.0.1:8899 \
-    --session audit-a --home ./.audit -- python examples/demo_agent.py
-python scripts/replay.py build .audit/audit-a.jsonl
-python scripts/replay.py compare .audit/audit-a.cassette.json --window 3000
+python -m unittest discover -s tests
 python scripts/replay.py compare examples/demo.cassette.json
+
+# terminal 1
+python tests/fake_upstream.py 8899 realistic
+
+# terminal 2
+python scripts/wrap.py --upstream http://127.0.0.1:8899 \
+  --policy truncate:200 -- python examples/demo_agent.py
 ```
 
-Expected: the audit names the four planted problems; the compare table shows
-the Fixture A rows above; the two `compare` outputs agree to within a few
-tokens. Machine-readable copies: `results/impact.json`.
+The final command should print an 8-turn audit with a substantially smaller
+input total than the unmodified `wrap.py` run. Keep the policy only after
+re-running the same real task with `bench.py --policy` and confirming that the
+task still passes.

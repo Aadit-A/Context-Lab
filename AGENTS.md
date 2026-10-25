@@ -4,7 +4,7 @@ Instructions for any coding agent working in this repository.
 
 ## What this project is
 
-A local measurement tool for LLM token usage. Three Python scripts, standard
+A local toolkit for measuring and reducing LLM token usage. It is standard
 library only. Read `SKILL.md` for the user-facing procedure; read
 `references/metrics.md` before changing any metric.
 
@@ -18,15 +18,17 @@ library only. Read `SKILL.md` for the user-facing procedure; read
    keys stay redacted, `--record-raw` stays opt-in.
 4. **A metric change is a breaking change.** Bump `SCHEMA_VERSION` and note it in
    CHANGELOG.md.
-5. **The proxy must not alter traffic.** Byte-for-byte passthrough, including
-   streaming responses.
+5. **The default recorder must not alter traffic.** `ctxprobe serve` is
+   byte-for-byte passthrough, including streaming responses. Request changes
+   are available only through the explicit `--policy` live gateway; responses
+   remain untouched.
 
 ## Commands
 
 ```bash
 python -m unittest discover -s tests        # all tests must pass
 python scripts/analyze.py examples/sample-session.jsonl   # visual smoke test
-python scripts/install.py --target dir --dest /tmp/x --dry-run
+python scripts/install.py --target dir --dest .audit/install-check --dry-run
 ```
 
 ## Style
@@ -41,6 +43,7 @@ python scripts/install.py --target dir --dest /tmp/x --dry-run
 | Path | Owns |
 |---|---|
 | `scripts/ctxprobe.py` | capture, proxying, usage and response parsing |
+| `scripts/live_policy.py` | explicit request-context reductions for live runs |
 | `scripts/cassette.py` | object store, tool-call pairing, request reconstruction |
 | `scripts/policies.py` | context transformations and their claims |
 | `scripts/replay.py` | calibration, projection, live divergence checking |

@@ -44,6 +44,11 @@ claude
 
 Or in one shot: `python scripts/wrap.py -- claude`.
 
+To apply one measured request-context fix during the run, add an explicit policy,
+for example `python scripts/wrap.py --policy truncate:200 -- claude`. The normal
+command is passthrough; policy mode changes only selected request context and
+does not rewrite provider responses.
+
 Notes:
 - Claude Code sends `/v1/messages`; streaming must pass through unmodified, which
   the proxy does by re-chunking the upstream stream.

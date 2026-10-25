@@ -144,7 +144,7 @@ unaffected, so historical comparisons stay valid.
 
 ---
 
-## Known limitations (v0.1)
+## Known limitations (v0.3)
 
 1. **Schema tokens are estimated**, not reported by the provider.
 2. **Compaction detection is heuristic.** A large context that shrinks for other
@@ -152,7 +152,8 @@ unaffected, so historical comparisons stay valid.
 3. **Cache accounting differs by provider.** Anthropic is exact; OpenAI exposes
    only cached tokens; other OpenAI-compatible providers often report nothing, in
    which case usage is flagged `estimated: true`.
-4. **Replay is not shipped yet.** Comparing two policies on the *same* recorded
-   tool outputs is the roadmap item that turns these estimates into experiments.
+4. **Offline replay is not correctness proof.** `compare` is a calibrated
+   projection; `run` measures decision divergence, and only the original task
+   proves whether the result still passes.
 5. **No log-based mode.** Harness logs omit request bodies and cache
    accounting, which is why the proxy exists.

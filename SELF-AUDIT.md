@@ -85,6 +85,10 @@ untouched, streams the response back in real time, and records message hashes,
 sizes, prefixes, and usage. With `--cassette`, content is written to a
 content-addressed object store so a session can be re-measured offline.
 
+An explicit `--policy` opt-in can transform selected request context before the
+provider sees it. Provider responses remain untouched, and the transformed
+request is what the live run measures.
+
 **Attribution.** Turn N's request is diffed against turn N−1 as a multiset, so a
 genuinely new message is separated from a repeated one. Costs are split into five
 buckets and priced with a dated table.
@@ -101,6 +105,7 @@ a saving changed behaviour.
 | Path | Responsibility |
 |---|---|
 | `scripts/ctxprobe.py` | proxy, recorder, SSE/JSON usage and response parsing |
+| `scripts/live_policy.py` | explicit request-context reductions for live runs |
 | `scripts/cassette.py` | object store, tool-call pairing, request reconstruction |
 | `scripts/policies.py` | `Policy` protocol, seven policies, trajectory claims |
 | `scripts/replay.py` | calibration, projection, live divergence, CLI |
@@ -111,27 +116,27 @@ a saving changed behaviour.
 | `scripts/install.py` | writes skill + shims for each harness |
 | `SKILL.md` | agent-facing procedure (the "skill" itself) |
 | `references/` | metrics, harness wiring, fix catalogue, replay design, prices |
-| `tests/` | 60 tests, stdlib `unittest`, no network |
+| `tests/` | stdlib `unittest`, no network |
 | `examples/` | demo agent, sample session, sample report |
 
 ## 1.5 CLI surface
 
 ```bash
-python scripts/ctxprobe.py serve --port 8787 [--cassette] [--record-raw] [--upstream URL]
-python scripts/wrap.py [--cassette] [--html out.html] -- <agent command>
+python scripts/ctxprobe.py serve --port 8787 [--cassette] [--record-raw] [--policy P] [--upstream URL]
+python scripts/wrap.py [--cassette] [--html out.html] [--policy P] -- <agent command>
 python scripts/analyze.py --latest [--json] [--html out.html]
 python scripts/replay.py build <session>.jsonl
 python scripts/replay.py compare <session>.cassette.json [--window N] [--json]
 python scripts/replay.py run <raw_dir> --policy P --max-turns N [--yes]
-python scripts/bench.py --name T --test "pytest -q" -- <agent command>
+python scripts/bench.py --name T --test "python -m unittest discover -s tests" [--policy P] -- <agent command>
 python scripts/install.py --target all --dest .
 ```
 
-## 1.6 Current state (v0.2.0)
+## 1.6 Current state (v0.3.0)
 
 Shipped and tested: capture, streaming passthrough, attribution, five metrics,
 HTML report, cassette + calibrated compare, live divergence check, tokens-to-green
-bench, installer shims, 60 tests.
+bench, installer shims, and an explicit live request-policy gateway.
 
 Known limitations, already documented — **do not "fix" these by pretending**:
 summarising compaction (we elide, so the saving is an upper bound); replay is
@@ -174,7 +179,7 @@ python scripts/analyze.py examples/sample-session.jsonl
 python scripts/replay.py compare examples/demo.cassette.json
 ```
 
-Expected: 60 tests pass; the audit prints five buckets and five metrics; the
+Expected: the full test count passes; the audit prints five buckets and five metrics; the
 baseline row reproduces the recorded token count with drift under ~15%.
 
 Note: `examples/sample-session.jsonl` predates cassettes and has no object store,

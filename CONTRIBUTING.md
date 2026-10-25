@@ -21,7 +21,8 @@ If it works, also open a PR adding your row to the table in
 ## Development
 
 ```bash
-git clone <repo> && cd context-lab
+git clone https://github.com/Aadit-A/Context-Lab.git
+cd Context-Lab
 python -m unittest discover -s tests
 ```
 
@@ -52,13 +53,14 @@ Prefix with the file or area, imperative mood, no trailing period.
 - Provider-specific hacks that break the passthrough guarantee.
 - Rewrites of `analyze.py` into a framework. It is 500 lines on purpose.
 
-## Ideas that are wanted
+## Useful contributions
 
-1. **Replay harness** — re-run a recorded session under a different context
-   policy against the same tool outputs. This is the roadmap's headline item.
+1. **Harness verification** — run a real session and add a versioned row to
+   `references/harnesses.md`.
 2. **Log adapters** — parse harness-native logs when they contain usage blocks.
-3. **More policies** — schema gating, retrieval budgets, compaction scheduling.
-4. **A leaderboard** — same model, same tasks, several strategies, reproducible.
+3. **More policies** — retrieval budgets, safer compaction, and harness-specific
+   policy packs.
+4. **Benchmark fixtures** — publish cassettes with reproducible task outcomes.
 
 ## License
 

@@ -7,10 +7,12 @@ license: MIT
 # Context Lab
 
 A coding agent's cost is set by **what it re-sends on every turn**, not by how
-long the user's prompt is. This skill measures that with a local proxy, names
-the causes, and proves whether a fix worked.
+long the user's prompt is. This skill measures that with a local proxy, applies
+an explicit request policy when the user asks for a reduction, and proves
+whether the fix worked.
 
-Three tools, no dependencies, no network egress except to the provider:
+A small standard-library toolkit, no dependencies, and no network egress except
+to the provider:
 
 | Script | Purpose |
 |---|---|
@@ -19,6 +21,7 @@ Three tools, no dependencies, no network egress except to the provider:
 | `scripts/wrap.py` | Runs any agent command under the proxy, then audits it |
 | `scripts/replay.py` | Re-measures a recorded session under a different context policy |
 | `scripts/bench.py` | Records tokens-to-green for one task, so changes are comparable |
+| `scripts/live_policy.py` | Request-shaping policies used by the opt-in live gateway |
 
 ---
 
@@ -46,6 +49,12 @@ directly from `references/playbook.md` — do not run the proxy.
    bodies for replay."*
 3. Never point the proxy at a provider the user has not configured. It forwards
    their own API key, unchanged, to their own upstream.
+
+The commands below assume the current working directory contains the Context Lab
+`scripts/` folder. If this skill was installed to a user skill directory, prefix
+the paths with that installed folder instead (for example
+`python ~/.claude/skills/context-lab/scripts/wrap.py`); do not assume the user's
+project also contains the skill source.
 
 ---
 
@@ -129,7 +138,7 @@ python scripts/replay.py run <session>.raw --policy dedupe-reads --max-turns 10
 Report the divergence rate, not just the saving. A policy that diverges is a
 hypothesis about quality, not a proven win.
 
-### Step 4 — change exactly one thing
+### Step 4 — apply exactly one fix
 
 Take the top recommendation and apply it. Prefer changes that are reversible and
 outside the user's source code:
@@ -142,12 +151,39 @@ outside the user's source code:
 
 Do **not** edit the user's application code to satisfy the audit.
 
+When the waste is in request context itself, the skill can apply one policy during
+the next run instead of only describing it. This is explicit opt-in: the default
+recorder remains a passthrough, while the selected policy changes request context
+before it reaches the provider and leaves provider responses untouched.
+
+```bash
+# Keep volatile dates/times out of the cacheable prefix.
+python scripts/wrap.py --policy cache-stable -- <agent command>
+
+# Replace exact repeated tool results with a short marker.
+python scripts/wrap.py --policy dedupe-reads -- <agent command>
+
+# Keep the head and tail of oversized tool results (trajectory is at risk).
+python scripts/wrap.py --policy truncate:200 -- <agent command>
+
+# Explicitly keep only named tools (trajectory is at risk if a needed tool is absent).
+python scripts/wrap.py --policy schema-gating:Read,Edit,Bash -- <agent command>
+```
+
+Use the policy that matches the audit finding, not all policies at once. The
+offline `replay.py compare` row is a projection; the live `wrap.py --policy`
+run is the actual intervention to measure with the provider. `elide` and
+`compact-at` remain compare-only because they need a full conversation policy
+and can break tool-call structure.
+
 ### Step 5 — prove it
 
 Re-run the *same* task, not a similar one:
 
 ```bash
-python scripts/bench.py --name "fix-billing-test" --test "pytest -q" -- claude "fix the failing test"
+python scripts/bench.py --name "fix-billing-test" \
+    --test "python -m unittest discover -s tests" \
+    --policy truncate:200 -- claude "fix the failing test"
 ```
 
 `bench.py` appends to `bench.csv` and prints the delta against the previous run
@@ -172,8 +208,10 @@ Append one line to `DECISIONS.md` in the repo (create it if absent):
 - **Local only.** Never upload session files, never enable `--record-raw` without
   explicit permission, and never echo an API key into a report.
 - **Do not break the user's session.** The proxy passes every request through
-  untouched. If a harness fails while wrapped, stop and report; do not "fix" it
-  by disabling TLS verification or editing provider SDKs.
+  untouched by default. A `--policy` run is the only exception and is an
+  explicit request-context experiment; provider responses are still passed
+  through untouched. If a harness fails while wrapped, stop and report; do not
+  "fix" it by disabling TLS verification or editing provider SDKs.
 - **Price table is a snapshot.** Costs are indicative. Say which price file was
   used and when it was updated.
 - **Estimates are labelled.** Every `est_saving_usd` is derived from the session's

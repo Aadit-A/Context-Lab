@@ -165,11 +165,15 @@ python scripts/replay.py compare examples/demo.cassette.json
 
 ## Measured impact
 
-Real-provider validation was attempted with Claude Code `2.1.301` on an isolated
-scratch task. The configured OpenRouter route rejected the request for an
-unrecognized model/insufficient credits, and a temporary first-party Anthropic
-route returned `401 Not logged in` before any model request reached Context Lab.
-Therefore real token usage, task success, and savings are **NOT MEASURED**.
+Fresh real Claude Code validation on October 27, 2026 completed the same
+scratch-repository task with and without `cache-stable`:
+
+- **Measured baseline:** 129,829 input / 337 output tokens, `$0.394689`.
+- **Measured `cache-stable`:** 129,326 input / 336 output tokens, `$0.393018`.
+- **Measured change:** 503 fewer input tokens (**-0.39%**) and `$0.001671`
+  lower reported cost (**-0.42%**).
+- **Correctness:** both runs passed the final unittest; cache read and cache
+  creation tokens were zero in both runs.
 
 Full commands, tables, attribution, and non-claims: [`IMPACT.md`](IMPACT.md).
 

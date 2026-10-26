@@ -1,39 +1,45 @@
 {
-  "date": "2026-10-26",
+  "date": "2026-10-27",
   "context_lab_version": "0.3.0",
-  "validation": "real-provider-attempt",
+  "validation": "real-claude-code-comparison",
   "machine": "Windows-11-10.0.26200-SP0, Python 3.14.6",
-  "harness": "Claude Code 2.1.301",
-  "task": "isolated scratch-repository Python unittest fix",
-  "real_usage": null,
-  "requests_recorded": 0,
-  "status": "NOT MEASURED",
-  "attempts": [
-    {
-      "name": "existing-configuration",
-      "provider_route": "OpenRouter via local Claude settings",
-      "result": "HTTP 429 unrecognized_model for google/gemma-4-26b-a4b-it:free",
-      "usage": null
+  "harness": "Claude Code 2.1.310",
+  "model": "claude-sonnet-4-5",
+  "task": "fix calc.py so test_calc.py passes without changing the test",
+  "provider_path": "configured Claude Code gateway through local ctxprobe",
+  "runs": {
+    "baseline": {
+      "policy": "baseline",
+      "turns": 5,
+      "input_tokens": 129829,
+      "output_tokens": 337,
+      "cache_read_tokens": 0,
+      "cache_creation_tokens": 0,
+      "reported_cost_usd": 0.394689,
+      "http_statuses": [200],
+      "usage_estimated": false,
+      "task_test": "PASS"
     },
-    {
-      "name": "explicit-sonnet-existing-configuration",
-      "provider_route": "OpenRouter via local Claude settings",
-      "result": "HTTP 402: requested up to 32000 output tokens; available credits allowed 2565",
-      "usage": null
-    },
-    {
-      "name": "temporary-first-party-settings",
-      "provider_route": "https://api.anthropic.com",
-      "result": "HTTP 401 Not logged in",
-      "usage": null
+    "cache_stable": {
+      "policy": "cache-stable",
+      "turns": 5,
+      "input_tokens": 129326,
+      "output_tokens": 336,
+      "cache_read_tokens": 0,
+      "cache_creation_tokens": 0,
+      "reported_cost_usd": 0.393018,
+      "http_statuses": [200],
+      "usage_estimated": false,
+      "task_test": "PASS"
     }
-  ],
-  "not_measured": [
-    "provider-reported input tokens",
-    "provider-reported output tokens",
-    "provider-reported cache tokens",
-    "real task success",
-    "real policy comparison",
-    "real savings percentage"
-  ]
+  },
+  "delta": {
+    "input_tokens": -503,
+    "input_reduction_pct": -0.39,
+    "output_tokens": -1,
+    "output_reduction_pct": -0.30,
+    "reported_cost_usd": -0.001671,
+    "reported_cost_reduction_pct": -0.42,
+    "task_correctness_preserved": true
+  }
 }

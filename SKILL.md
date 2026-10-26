@@ -176,6 +176,13 @@ run is the actual intervention to measure with the provider. `elide` and
 `compact-at` remain compare-only because they need a full conversation policy
 and can break tool-call structure.
 
+When the user states a maximum (tokens, cost, or "set and forget"), do not
+pick the policy by hand: use the **context-lab-budget-guard** sub-skill
+(`autotune.py plan/enable`, then `--policy auto`, then `guard`). When the
+user names no fix and no budget, the **context-lab-auto-fix** sub-skill
+routes the top audit finding to exactly one action. Both live in `skills/`
+with their own procedures; `references/autotune.md` documents the ladder.
+
 ### Step 5 — prove it
 
 Re-run the *same* task, not a similar one:

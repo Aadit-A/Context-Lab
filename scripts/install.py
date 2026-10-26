@@ -95,6 +95,21 @@ def copy_skill(dest: Path, dry: bool) -> None:
             shutil.move(str(staged), str(dest))
 
 
+def copy_subskills(skills_root: Path, dry: bool) -> None:
+    """Install each skills/<name> sub-skill as context-lab-<name> beside the main skill."""
+    src_root = HERE / "skills"
+    if not src_root.is_dir():
+        return
+    for src in sorted(p for p in src_root.iterdir() if p.is_dir()):
+        out = skills_root / f"context-lab-{src.name}"
+        if not dry:
+            if out.exists():
+                shutil.rmtree(out) if out.is_dir() else out.unlink()
+            out.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(src, out)
+        print(f"sub-skill         -> {out}")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Install Context Lab into a harness.")
     ap.add_argument(
@@ -120,10 +135,12 @@ def main(argv: list[str] | None = None) -> int:
             out = Path.home() / ".claude" / "skills" / "context-lab"
             copy_skill(out, args.dry_run)
             print(f"claude (user)     -> {out}")
+            copy_subskills(out.parent, args.dry_run)
         elif target == "claude-project":
             out = dest / ".claude" / "skills" / "context-lab"
             copy_skill(out, args.dry_run)
             print(f"claude (project)  -> {out}")
+            copy_subskills(out.parent, args.dry_run)
         elif target == "dir":
             out = dest / "context-lab"
             copy_skill(out, args.dry_run)

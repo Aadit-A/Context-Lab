@@ -63,7 +63,8 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help=(
             "opt-in live request policy: cache-stable, dedupe-reads, "
-            "schema-gating[:Tool,...], or truncate:N"
+            "schema-gating[:Tool,...], truncate:N, or auto (the policy "
+            "persisted by autotune.py enable)"
         ),
     )
     ap.add_argument("--no-analyze", action="store_true")

@@ -44,12 +44,14 @@ python scripts/install.py --target dir --dest .audit/install-check --dry-run
 |---|---|
 | `scripts/ctxprobe.py` | capture, proxying, usage and response parsing |
 | `scripts/live_policy.py` | explicit request-context reductions for live runs |
+| `scripts/autotune.py` | budget ladder, persisted `--policy auto` config, regression guard |
 | `scripts/cassette.py` | object store, tool-call pairing, request reconstruction |
 | `scripts/policies.py` | context transformations and their claims |
 | `scripts/replay.py` | calibration, projection, live divergence checking |
 | `scripts/analyze.py` | attribution, metrics, recommendations |
 | `scripts/report.py` | HTML rendering only |
 | `scripts/bench.py` | tokens-to-green loop |
+| `skills/` | installable sub-skills (budget-guard, auto-fix) |
 | `references/` | definitions and per-harness wiring — keep in sync with code |
 
 If you change a formula in `analyze.py`, change the matching line in

@@ -5,7 +5,29 @@ semver once 1.0 ships.
 
 ## [Unreleased]
 
-No unreleased changes.
+### Added
+- `scripts/autotune.py`: budget-driven automation over the live policies.
+  `plan` projects a safety-ordered ladder (baseline, cache-stable, truncate,
+  dedupe-reads, schema-gating) against one recorded session — calibrated via
+  the cassette when present, labelled estimate otherwise — and selects the
+  lowest tier fitting `--budget` (tokens, `N%`, optional `--budget-usd`,
+  `--max-tier safe|balanced|aggressive` risk cap). `enable`/`disable`/`status`
+  persist the choice to `~/.ctxprobe/autotune.json`; `guard` steps the policy
+  back down the ladder when a `bench.py` run regresses on the same task.
+- `--policy auto` on `wrap.py`, `bench.py`, and `ctxprobe serve`: expands to
+  the persisted autotune policy at proxy start. Still explicit opt-in — the
+  default recorder remains byte-for-byte passthrough and responses are never
+  rewritten.
+- Sub-skills: `skills/budget-guard` (context-lab-budget-guard; use when the
+  user states a max token usage or asks for set-and-forget reduction) and
+  `skills/auto-fix` (context-lab-auto-fix; router mapping the top audit
+  finding to exactly one policy or config change). `install.py` installs them
+  beside the main skill for the `claude` and `claude-project` targets.
+- `references/autotune.md` documents the ladder order, tier caps, budget
+  semantics, estimate multipliers, and guard behavior.
+- `tests/test_autotune.py` — 24 tests covering ladder order, budget parsing,
+  tier selection (fit, floor, cap, drift-withholding), config lifecycle,
+  `auto` resolution, and guard step-down.
 
 ## [0.3.0] - 2026-10-26
 

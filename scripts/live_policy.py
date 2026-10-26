@@ -191,4 +191,11 @@ class LivePolicy:
 
 def make(spec: str) -> LivePolicy:
     """Build an explicit live policy, with a user-facing validation error."""
+    if spec.strip() == "auto":
+        import autotune  # lazy: the passthrough path never reads the config file
+
+        try:
+            spec = autotune.resolve_policy()
+        except autotune.AutotuneError as exc:
+            raise LivePolicyError(str(exc)) from None
     return LivePolicy(spec)

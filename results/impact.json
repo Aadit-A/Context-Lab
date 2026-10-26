@@ -1,85 +1,39 @@
 {
   "date": "2026-10-26",
-  "version": "0.3.0",
+  "context_lab_version": "0.3.0",
+  "validation": "real-provider-attempt",
   "machine": "Windows-11-10.0.26200-SP0, Python 3.14.6",
-  "token_provenance": "scripted local provider reports usage derived from serialized request bytes at roughly 4 chars/token; not real-provider billing",
-  "tests": {
-    "command": "python -m unittest discover -s tests",
-    "passed": 83
-  },
-  "fixtures": [
+  "harness": "Claude Code 2.1.301",
+  "task": "isolated scratch-repository Python unittest fix",
+  "real_usage": null,
+  "requests_recorded": 0,
+  "status": "NOT MEASURED",
+  "attempts": [
     {
-      "fixture": "A-live",
-      "harness": "bundled demo agent (examples/demo_agent.py)",
-      "model": "claude-sonnet-4-5",
-      "turns": 8,
-      "measured": {
-        "baseline": {
-          "input_tokens": 36299,
-          "output_tokens": 8,
-          "cost_usd": 0.109,
-          "chr": 0.0,
-          "psi": 0.0,
-          "rdr": 0.5,
-          "st": 0.0251
-        },
-        "cache-stable": {
-          "input_tokens": 36093,
-          "output_tokens": 8,
-          "cost_usd": 0.1084,
-          "psi": 1.0,
-          "rdr": 0.5,
-          "st": 0.0253,
-          "prefix_breaks": 0
-        },
-        "schema-gating:Read": {
-          "input_tokens": 35370,
-          "output_tokens": 8,
-          "cost_usd": 0.1062,
-          "psi": 0.0,
-          "rdr": 0.5,
-          "st": 0.005
-        },
-        "dedupe-reads": {
-          "input_tokens": 6599,
-          "output_tokens": 8,
-          "cost_usd": 0.0199,
-          "psi": 0.0,
-          "rdr": 0.0131,
-          "st": 0.1382
-        },
-        "truncate-200": {
-          "input_tokens": 6225,
-          "output_tokens": 8,
-          "cost_usd": 0.0188,
-          "psi": 0.0,
-          "rdr": 0.5,
-          "st": 0.1465
-        }
-      },
-      "note": "All five demo processes exited 0; no correctness test was run."
+      "name": "existing-configuration",
+      "provider_route": "OpenRouter via local Claude settings",
+      "result": "HTTP 429 unrecognized_model for google/gemma-4-26b-a4b-it:free",
+      "usage": null
     },
     {
-      "fixture": "A-offline-projection",
-      "source": "examples/demo.cassette.json",
-      "turns": 8,
-      "projected": {
-        "recorded_tokens_in": 36296,
-        "baseline_drift_pct": 0.39,
-        "scale": 1.057,
-        "policies": {
-          "baseline": {"tokens_in": 36296, "cost_usd": 0.109, "delta_pct": 0.0, "cache_pct": 0.0, "trajectory": "preserved"},
-          "cache-stable": {"tokens_in": 36296, "cost_usd": 0.0208, "delta_pct": -80.9, "cache_pct": 0.9, "trajectory": "preserved"},
-          "dedupe-reads": {"tokens_in": 6058, "cost_usd": 0.0183, "delta_pct": -83.2, "cache_pct": 0.0, "trajectory": "at risk"},
-          "schema-gating": {"tokens_in": 36296, "cost_usd": 0.109, "delta_pct": 0.0, "cache_pct": 0.0, "trajectory": "preserved"},
-          "truncate-200": {"tokens_in": 5646, "cost_usd": 0.0171, "delta_pct": -84.4, "cache_pct": 0.0, "trajectory": "at risk"}
-        }
-      }
+      "name": "explicit-sonnet-existing-configuration",
+      "provider_route": "OpenRouter via local Claude settings",
+      "result": "HTTP 402: requested up to 32000 output tokens; available credits allowed 2565",
+      "usage": null
+    },
+    {
+      "name": "temporary-first-party-settings",
+      "provider_route": "https://api.anthropic.com",
+      "result": "HTTP 401 Not logged in",
+      "usage": null
     }
   ],
-  "not_run": {
-    "phase_4b_live_replay": "no API key; audit budget $0",
-    "provider_billed_calibration": "NOT MEASURED",
-    "task_correctness_after_policy": "NOT MEASURED"
-  }
+  "not_measured": [
+    "provider-reported input tokens",
+    "provider-reported output tokens",
+    "provider-reported cache tokens",
+    "real task success",
+    "real policy comparison",
+    "real savings percentage"
+  ]
 }

@@ -114,6 +114,29 @@ python scripts/bench.py --name fix-billing \
 `dedupe-reads`, `truncate:N`, and an explicit schema allowlist can change what a
 model sees. A cheaper run is not a win if the task no longer passes.
 
+### Set-and-forget budgets (autotune)
+
+State a maximum and let the toolkit pick, persist, and guard the policy:
+
+```bash
+python scripts/autotune.py plan --latest --budget 100000   # or 50%, or --max-tier safe
+python scripts/autotune.py enable truncate:200 --budget 100000
+python scripts/wrap.py --policy auto -- claude             # persists across runs
+python scripts/bench.py --name fix-billing --test "..." --policy auto -- claude "fix the tests"
+python scripts/autotune.py guard --name fix-billing        # steps DOWN on regression
+```
+
+`plan` projects a safety-ordered policy ladder against the recorded session
+(calibrated when a cassette exists, labelled estimate otherwise) and selects
+the lowest tier that fits the budget. `guard` watches bench results: if a
+cheaper run stops solving the task, the persisted policy automatically steps
+down one tier. Design: [`references/autotune.md`](references/autotune.md).
+
+Two sub-skills automate the decision itself: **context-lab-budget-guard**
+(user states a cap) and **context-lab-auto-fix** (router: audit finding to
+exactly one fix). See [`skills/README.md`](skills/README.md); `install.py`
+ships them beside the main skill.
+
 ## No-key demo
 
 The repository includes a fake localhost provider and a demo agent. No API key or
@@ -142,21 +165,11 @@ python scripts/replay.py compare examples/demo.cassette.json
 
 ## Measured impact
 
-These figures are from this repository's bundled demo and a scripted localhost
-provider. The provider derives usage from serialized request bytes, so the token
-counts are measured provider responses from a synthetic fixture, not real-provider
-billing.
-
-- **Measured:** `truncate:200` reduced input from **36,299 to 6,225 tokens
-  (-82.9%)** on the 8-turn demo capture.
-- **Measured:** `dedupe-reads` reduced input to **6,599 tokens (-81.8%)** and RDR
-  from **50.0% to 1.3%** on the same task.
-- **Measured / projected:** `cache-stable` changed PSI from **0% to 100%** in
-  the live fixture; the committed cassette projects **-80.9% cost** when a real
-  provider cache is available.
-
-No task-correctness claim is made for the trajectory-risky policies. Real-provider
-billing and live replay were not measured on this machine.
+Real-provider validation was attempted with Claude Code `2.1.301` on an isolated
+scratch task. The configured OpenRouter route rejected the request for an
+unrecognized model/insufficient credits, and a temporary first-party Anthropic
+route returned `401 Not logged in` before any model request reached Context Lab.
+Therefore real token usage, task success, and savings are **NOT MEASURED**.
 
 Full commands, tables, attribution, and non-claims: [`IMPACT.md`](IMPACT.md).
 
@@ -245,7 +258,9 @@ how to report a measured before/after result. See [`SKILL.md`](SKILL.md).
 | `scripts/replay.py` | Calibrated comparison and live divergence checks |
 | `scripts/wrap.py` | Run a harness under the recorder |
 | `scripts/bench.py` | Tokens-to-green comparison |
+| `scripts/autotune.py` | Budget-driven policy selection, persistence, regression guard |
 | `scripts/install.py` | Install the skill and harness shims |
+| `skills/` | Sub-skills: budget-guard, auto-fix (router) |
 | `references/` | Metrics, harnesses, policies, prices, replay notes |
 | `tests/` | Standard-library regression and integration tests |
 | `examples/` | No-key demo agent and committed cassette |

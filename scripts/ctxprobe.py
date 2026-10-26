@@ -594,50 +594,63 @@ class CtxProbeHandler(BaseHTTPRequestHandler):
         sink = UsageSink(provider)
         captured = bytearray()
 
-        if stream:
-            self.send_response(status)
-            for key, value in headers.items():
-                if key.lower() in HOP_BY_HOP:
-                    continue
-                self.send_header(key, value)
-            self.send_header("Transfer-Encoding", "chunked")
-            self.end_headers()
-            try:
-                while True:
-                    chunk = resp.read(2048)
-                    if not chunk:
-                        break
-                    sink.feed_stream_bytes(chunk)
-                    captured.extend(chunk)
-                    self.wfile.write(b"%x\r\n" % len(chunk) + chunk + b"\r\n")
-                    self.wfile.flush()
-                self.wfile.write(b"0\r\n\r\n")
-                self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError):
-                pass
-        else:
-            raw = resp.read()
-            sink.feed_json(raw)
-            captured.extend(raw)
-            self.send_response(status)
-            for key, value in headers.items():
-                if key.lower() in HOP_BY_HOP:
-                    continue
-                self.send_header(key, value)
-            self.send_header("Content-Length", str(len(raw)))
-            self.end_headers()
-            try:
-                self.wfile.write(raw)
-            except (BrokenPipeError, ConnectionResetError):
-                pass
+        def finish_capture() -> None:
+            # Runs before the response completes, so a client that has read
+            # the whole body can never race the session file.
+            if self.request_policy is not None:
+                try:
+                    self.request_policy.observe(sink.response(), provider)
+                except Exception as exc:
+                    sys.stderr.write(f"[ctxprobe] policy observe error: {exc}\n")
+            if self.recorder is not None and body:
+                self._record(payload, provider, sink, status, started, forward_body, stream)
 
-        if self.request_policy is not None:
-            try:
-                self.request_policy.observe(sink.response(), provider)
-            except Exception as exc:
-                sys.stderr.write(f"[ctxprobe] policy observe error: {exc}\n")
-        if self.recorder is not None and body:
-            self._record(payload, provider, sink, status, started, forward_body, stream)
+        try:
+            if stream:
+                self.send_response(status)
+                for key, value in headers.items():
+                    if key.lower() in HOP_BY_HOP:
+                        continue
+                    self.send_header(key, value)
+                self.send_header("Transfer-Encoding", "chunked")
+                self.end_headers()
+                broke = False
+                try:
+                    while True:
+                        chunk = resp.read(2048)
+                        if not chunk:
+                            break
+                        sink.feed_stream_bytes(chunk)
+                        captured.extend(chunk)
+                        self.wfile.write(b"%x\r\n" % len(chunk) + chunk + b"\r\n")
+                        self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    broke = True
+                finish_capture()
+                if not broke:
+                    try:
+                        self.wfile.write(b"0\r\n\r\n")
+                        self.wfile.flush()
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass
+            else:
+                raw = resp.read()
+                sink.feed_json(raw)
+                captured.extend(raw)
+                finish_capture()
+                self.send_response(status)
+                for key, value in headers.items():
+                    if key.lower() in HOP_BY_HOP:
+                        continue
+                    self.send_header(key, value)
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                try:
+                    self.wfile.write(raw)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+        finally:
+            resp.close()
 
     def _record(
         self,
@@ -817,7 +830,8 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help=(
             "opt-in live request policy: cache-stable, dedupe-reads, "
-            "schema-gating[:Tool,...], or truncate:N"
+            "schema-gating[:Tool,...], truncate:N, or auto (the policy "
+            "persisted by autotune.py enable)"
         ),
     )
     s.add_argument("--verbose", action="store_true")
